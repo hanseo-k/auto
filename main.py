@@ -33,8 +33,8 @@ import plot_1d_mad
 import trust_map
 
 
-DATA_ROOT  = '/Users/gimhanseo/Desktop/공프/HY202103'
-NUB_DIR    = '/Users/gimhanseo/Desktop/공프/자동분석폴더/nub'
+DATA_ROOT    = '/Users/gimhanseo/Desktop/공프/HY202103'
+PROGRAM_ROOT = '/Users/gimhanseo/Desktop/공프/자동분석폴더'
 
 
 def process_die(xml_path):
@@ -154,19 +154,19 @@ def main():
     ).round(2)
     print(summary)
 
-    # 최신 결과 nub/results/latest 에 복사 후 자동 push
+    # 최신 결과를 results/latest 에 복사 후 자동 push
     print('\n[GitHub] 최신 결과 업로드 중...')
-    latest_dst = os.path.join(NUB_DIR, 'results', 'latest')
+    latest_dst = os.path.join(PROGRAM_ROOT, 'results', 'latest')
     if os.path.exists(latest_dst):
         shutil.rmtree(latest_dst)
     shutil.copytree(run_dir, latest_dst)
-    subprocess.run(['git', '-C', NUB_DIR, 'add', '-A'], check=True)
+    subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
     # 변경사항 없으면 commit 스킵
-    status = subprocess.run(['git', '-C', NUB_DIR, 'diff', '--cached', '--quiet'])
+    status = subprocess.run(['git', '-C', PROGRAM_ROOT, 'diff', '--cached', '--quiet'])
     if status.returncode != 0:
-        subprocess.run(['git', '-C', NUB_DIR, 'commit', '-m',
+        subprocess.run(['git', '-C', PROGRAM_ROOT, 'commit', '-m',
                         f'Update latest results ({os.path.basename(run_dir)})'], check=True)
-        subprocess.run(['git', '-C', NUB_DIR, 'push', 'origin', 'main'], check=True)
+        subprocess.run(['git', '-C', PROGRAM_ROOT, 'push', 'origin', 'main'], check=True)
         print('[GitHub] 업로드 완료!')
     else:
         print('[GitHub] 변경사항 없음 — 스킵')
