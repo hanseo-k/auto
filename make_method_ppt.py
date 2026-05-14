@@ -12,8 +12,8 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from pptx.enum.shapes import MSO_SHAPE
 
-OUT = '/Users/gimhanseo/Desktop/공프/이거 개쩌는 프로그램/분석방법_메모.pptx'
-FIG_DIR = '/Users/gimhanseo/Desktop/공프/이거 개쩌는 프로그램/figures'
+OUT = '/Users/gimhanseo/Desktop/공프/자동분석폴더/분석방법_메모.pptx'
+FIG_DIR = '/Users/gimhanseo/Desktop/공프/자동분석폴더/figures'
 
 prs = Presentation()
 prs.slide_width = Inches(13.333); prs.slide_height = Inches(7.5)

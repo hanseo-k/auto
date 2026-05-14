@@ -9,7 +9,7 @@ import datetime
 import pandas as pd
 
 
-PROGRAM_ROOT = '/Users/gimhanseo/Desktop/공프/이거 개쩌는 프로그램'
+PROGRAM_ROOT = '/Users/gimhanseo/Desktop/공프/자동분석폴더'
 
 
 def make_run_dir():

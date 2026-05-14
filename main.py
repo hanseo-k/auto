@@ -17,6 +17,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pandas as pd
 import multiprocessing
+import shutil
+import subprocess
 from concurrent.futures import ProcessPoolExecutor
 
 from xml_loader import find_all_xmls, load_die
@@ -31,7 +33,8 @@ import plot_1d_mad
 import trust_map
 
 
-DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
+DATA_ROOT  = '/Users/gimhanseo/Desktop/공프/HY202103'
+NUB_DIR    = '/Users/gimhanseo/Desktop/공프/자동분석폴더/nub'
 
 
 def process_die(xml_path):
@@ -150,6 +153,23 @@ def main():
         Vpi=('Vpi_V', 'median'),
     ).round(2)
     print(summary)
+
+    # 최신 결과 nub/results/latest 에 복사 후 자동 push
+    print('\n[GitHub] 최신 결과 업로드 중...')
+    latest_dst = os.path.join(NUB_DIR, 'results', 'latest')
+    if os.path.exists(latest_dst):
+        shutil.rmtree(latest_dst)
+    shutil.copytree(run_dir, latest_dst)
+    subprocess.run(['git', '-C', NUB_DIR, 'add', '-A'], check=True)
+    # 변경사항 없으면 commit 스킵
+    status = subprocess.run(['git', '-C', NUB_DIR, 'diff', '--cached', '--quiet'])
+    if status.returncode != 0:
+        subprocess.run(['git', '-C', NUB_DIR, 'commit', '-m',
+                        f'Update latest results ({os.path.basename(run_dir)})'], check=True)
+        subprocess.run(['git', '-C', NUB_DIR, 'push', 'origin', 'main'], check=True)
+        print('[GitHub] 업로드 완료!')
+    else:
+        print('[GitHub] 변경사항 없음 — 스킵')
 
 
 if __name__ == '__main__':

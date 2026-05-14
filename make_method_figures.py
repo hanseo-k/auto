@@ -5,7 +5,7 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle
 
-OUT_DIR = '/Users/gimhanseo/Desktop/공프/이거 개쩌는 프로그램/figures'
+OUT_DIR = '/Users/gimhanseo/Desktop/공프/자동분석폴더/figures'
 os.makedirs(OUT_DIR, exist_ok=True)
 
 
