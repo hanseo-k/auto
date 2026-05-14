@@ -3,8 +3,5 @@ __pycache__/
 *.pyc
 *.pyo
 
-# 결과물 (이미지, CSV)
-results/
-
 # macOS
 .DS_Store
