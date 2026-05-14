@@ -5,11 +5,10 @@
 
 데이터 흐름:
     1) HY202103 폴더에서 모든 LMZC/LMZO XML 자동 탐색
-    2) 다이별로 ER, IL, V_π 추출 (각각 별도 모듈)
+    2) 다이별로 ER, IL, V_π 추출 — 멀티코어 병렬 처리
     3) Outlier 검출 (물리 한계 + Hampel filter)
     4) 실행 시각 폴더 만들고 CSV 저장
-    5) 웨이퍼맵 (연속 surface) 생성 — ER/IL/Vpi
-    6) 1D 분포 그래프 생성 — outlier는 속 빈 마커
+    5) 웨이퍼맵 / 1D분포 / 1D+MAD / 신뢰도맵 — 4개 동시 생성
 
 VSCode ▶ (F5) 로 그대로 실행 가능. 절대경로 사용.
 """
@@ -17,6 +16,8 @@ import sys, os
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import pandas as pd
+import multiprocessing
+from concurrent.futures import ProcessPoolExecutor
 
 from xml_loader import find_all_xmls, load_die
 from extract_er import extract_er
@@ -55,6 +56,13 @@ def process_die(xml_path):
     }
 
 
+# ── 플롯 작업 래퍼 (multiprocessing 전달용 최상위 함수) ──────────────
+def _run_wafer_map(args): wafer_map.plot_all(*args)
+def _run_plot_1d(args):   plot_1d.plot_all(*args)
+def _run_plot_mad(args):  plot_1d_mad.plot_all(*args)
+def _run_trust_map(args): trust_map.plot_all(*args)
+
+
 def main():
     print('=' * 60)
     print(' MZM 4-wafer 분석 시작')
@@ -64,13 +72,11 @@ def main():
     xmls = find_all_xmls(DATA_ROOT)
     print(f'\n[1/6] 발견된 다이 XML: {len(xmls)}개')
 
-    # 2) 다이별 추출
-    print('[2/6] ER, IL, V_π 추출 중...')
-    rows = []
-    for fp in xmls:
-        row = process_die(fp)
-        if row is not None:
-            rows.append(row)
+    # 2) 다이별 추출 — 멀티코어 병렬
+    print('[2/6] ER, IL, V_π 추출 중... (멀티코어)')
+    with multiprocessing.Pool() as pool:
+        results = pool.map(process_die, xmls)
+    rows = [r for r in results if r is not None]
     df = pd.DataFrame(rows).sort_values(['Band', 'Wafer', 'Row', 'Col'])
     df = df.reset_index(drop=True)
     print(f'        → {len(df)}개 다이 처리 완료')
@@ -90,18 +96,19 @@ def main():
     print(f'        → {run_dir}')
     export_csv(df, run_dir)
 
-    # 5) 웨이퍼맵
-    print('[5/7] 웨이퍼맵 생성 (연속 surface)...')
-    wafer_map.plot_all(df, run_dir)
-
-    # 6) 1D 분포 그래프
-    print('[6/7] 1D 분포 그래프 생성...')
-    plot_1d.plot_all(df, run_dir)
-    plot_1d_mad.plot_all(df, run_dir)
-
-    # 7) 신뢰도 맵
-    print('[7/7] 신뢰도 맵 생성 (Hampel 이웃 수)...')
-    trust_map.plot_all(df, run_dir)
+    # 5~7) 플롯 4종 동시 생성 — 코어 하나씩 배정
+    print('[5/7] 플롯 생성 (웨이퍼맵 / 1D / 1D+MAD / 신뢰도맵 — 4코어 동시)...')
+    tasks = [
+        (_run_wafer_map, (df, run_dir)),
+        (_run_plot_1d,   (df, run_dir)),
+        (_run_plot_mad,  (df, run_dir)),
+        (_run_trust_map, (df, run_dir)),
+    ]
+    with ProcessPoolExecutor(max_workers=None) as ex:
+        futures = [ex.submit(fn, args) for fn, args in tasks]
+        for f in futures:
+            f.result()  # 예외 있으면 여기서 터짐
+    print('        → 모든 플롯 완료')
 
     print('\n' + '=' * 60)
     print(' 완료!  결과 위치:')
