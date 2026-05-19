@@ -1,99 +1,99 @@
-﻿Date,Wafer,Band,Row,Col,Width_nm,ER_dB,IL_dB,Vpi_V,dlam_dV_pm_per_V,reason_ER_dB,out_of_bound_ER_dB,reason_IL_dB,out_of_bound_IL_dB,reason_Vpi_V,out_of_bound_Vpi_V,is_problematic
-2019-05-26,D08,O,-4,-1,380,29.897,-8.174,26.78,-180.3,,False,,False,,False,False
-2019-05-26,D08,O,-3,-3,380,30.202,-9.367,29.32,-166.8,,False,,False,,False,False
-2019-05-26,D08,O,-3,0,380,31.749,-8.149,29.5,-166.41,,False,,False,,False,False
-2019-05-26,D08,O,-3,2,380,32.285,-8.518,26.46,-186.65,,False,,False,,False,False
-2019-05-26,D08,O,-1,-3,380,32.17,-7.512,28.49,-172.51,,False,,False,,False,False
-2019-05-26,D08,O,-1,-1,380,30.274,-6.595,30.46,-161.57,,False,,False,,False,False
-2019-05-26,D08,O,-1,3,380,32.435,-8.897,26.34,-186.21,,False,,False,,False,False
-2019-05-26,D08,O,0,-4,380,32.383,-8.239,27.28,-179.2,,False,,False,,False,False
-2019-05-26,D08,O,0,0,380,31.172,-6.248,30.36,-162.44,,False,,False,,False,False
-2019-05-26,D08,O,0,2,380,30.347,-6.932,27.58,-178.67,,False,,False,,False,False
-2019-05-26,D08,O,2,-3,380,32.134,-7.603,28.1,-173.13,,False,,False,,False,False
-2019-05-26,D08,O,2,-1,380,32.724,-6.275,27.81,-177.9,,False,,False,,False,False
-2019-05-26,D08,O,2,2,380,33.164,-6.498,27.6,-178.79,,False,,False,,False,False
-2019-05-26,D08,O,3,0,380,31.483,-6.572,28.74,-169.78,,False,,False,,False,False
-2019-05-31,D23,O,-4,-1,380,27.875,-8.499,,3.13,,False,,False,broken: |dλ/dV|=3.13 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-3,-3,380,30.779,-9.741,,2.3,,False,,False,broken: |dλ/dV|=2.30 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-3,0,380,33.244,-7.332,,-0.06,,False,,False,broken: |dλ/dV|=0.06 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-3,2,380,30.773,-7.382,,0.59,,False,,False,broken: |dλ/dV|=0.59 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-1,-3,380,31.699,-9.219,,0.15,,False,,False,broken: |dλ/dV|=0.15 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-1,-1,380,30.992,-7.065,,1.16,,False,,False,broken: |dλ/dV|=1.16 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,-1,3,380,32.503,-8.1,,-4.66,,False,,False,broken: |dλ/dV|=4.66 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,0,-4,380,31.825,-8.028,,-1.61,,False,,False,broken: |dλ/dV|=1.61 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,0,0,380,29.592,-6.775,,0.21,,False,,False,broken: |dλ/dV|=0.21 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,0,2,380,32.478,-6.919,,-1.2,,False,,False,broken: |dλ/dV|=1.20 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,2,-3,380,33.422,-7.398,,1.35,,False,,False,broken: |dλ/dV|=1.35 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,2,-1,380,31.506,-6.857,,2.31,,False,,False,broken: |dλ/dV|=2.31 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,2,2,380,33.974,-6.436,,-0.08,,False,,False,broken: |dλ/dV|=0.08 < 10 pm/V (slope filter),True,True
-2019-05-31,D23,O,3,0,380,34.457,-6.541,,1.3,,False,,False,broken: |dλ/dV|=1.30 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-4,-1,380,29.102,-8.821,,0.91,,False,,False,broken: |dλ/dV|=0.91 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-3,-3,380,32.241,-9.843,,0.28,,False,,False,broken: |dλ/dV|=0.28 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-3,0,380,31.9,-8.044,,0.27,,False,,False,broken: |dλ/dV|=0.27 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-3,2,380,29.778,-8.036,,1.33,,False,,False,broken: |dλ/dV|=1.33 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-1,-3,380,30.524,-8.673,,0.61,,False,,False,broken: |dλ/dV|=0.61 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-1,-1,380,29.688,-6.785,,0.3,,False,,False,broken: |dλ/dV|=0.30 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,-1,3,380,32.253,-8.525,,1.76,,False,,False,broken: |dλ/dV|=1.76 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,0,-4,380,32.91,-8.239,,-1.84,,False,,False,broken: |dλ/dV|=1.84 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,0,0,380,29.881,-6.785,,-0.57,,False,,False,broken: |dλ/dV|=0.57 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,0,2,380,31.358,-6.643,,0.11,,False,,False,broken: |dλ/dV|=0.11 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,2,-3,380,31.543,-7.891,,3.44,,False,,False,broken: |dλ/dV|=3.44 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,2,-1,380,31.925,-6.389,,0.87,,False,,False,broken: |dλ/dV|=0.87 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,2,2,380,28.69,-7.481,,-0.88,,False,,False,broken: |dλ/dV|=0.88 < 10 pm/V (slope filter),True,True
-2019-05-31,D24,O,3,0,380,31.412,-7.55,,-0.71,,False,,False,broken: |dλ/dV|=0.71 < 10 pm/V (slope filter),True,True
-2019-06-03,D23,O,-4,-1,380,29.083,-8.322,36.18,-133.85,,False,,False,,False,False
-2019-06-03,D23,O,-3,-3,380,31.257,-9.721,42.12,-116.09,,False,,False,,False,False
-2019-06-03,D23,O,-3,0,380,32.936,-7.292,42.05,-116.4,,False,,False,,False,False
-2019-06-03,D23,O,-3,2,380,30.942,-7.466,35.49,-137.06,,False,,False,,False,False
-2019-06-03,D23,O,-1,-3,380,30.964,-9.174,45.89,-107.06,,False,,False,,False,False
-2019-06-03,D23,O,-1,-1,380,30.056,-7.066,44.36,-112.21,,False,,False,,False,False
-2019-06-03,D23,O,-1,3,380,31.848,-7.954,35.16,-140.86,,False,,False,,False,False
-2019-06-03,D23,O,0,-4,380,32.196,-8.017,38.29,-128.09,,False,,False,,False,False
-2019-06-03,D23,O,0,0,380,29.911,-6.744,46.64,-106.92,,False,,False,,False,False
-2019-06-03,D23,O,0,2,380,32.627,-6.911,40.54,-120.67,,False,,False,,False,False
-2019-06-03,D23,O,2,-3,380,32.794,-7.334,37.81,-130.6,,False,,False,,False,False
-2019-06-03,D23,O,2,-1,380,31.937,-6.962,42.12,-118.08,,False,,False,,False,False
-2019-06-03,D23,O,2,2,380,34.566,-6.487,42.37,-115.51,,False,,False,,False,False
-2019-06-03,D23,O,3,0,380,34.394,-6.538,37.93,-129.17,,False,,False,,False,False
-2019-06-03,D24,O,-4,-1,380,29.868,-8.519,41.34,-118.03,,False,,False,,False,False
-2019-06-03,D24,O,-3,-3,380,31.996,-9.754,37.35,-130.75,,False,,False,,False,False
-2019-06-03,D24,O,-3,0,380,32.033,-7.907,38.19,-127.31,,False,,False,,False,False
-2019-06-03,D24,O,-3,2,380,29.014,-7.995,40.4,-121.69,,False,,False,,False,False
-2019-06-03,D24,O,-1,-3,380,31.671,-8.967,39.5,-123.84,,False,,False,,False,False
-2019-06-03,D24,O,-1,-1,380,31.376,-6.944,44.23,-111.39,,False,,False,,False,False
-2019-06-03,D24,O,-1,3,380,32.741,-8.506,38.16,-128.72,,False,,False,,False,False
-2019-06-03,D24,O,0,-4,380,33.284,-8.225,42.95,-113.59,,False,,False,,False,False
-2019-06-03,D24,O,0,0,380,30.201,-6.855,43.37,-114.23,,False,,False,,False,False
-2019-06-03,D24,O,0,2,380,32.125,-6.539,41.84,-117.58,,False,,False,,False,False
-2019-06-03,D24,O,2,-3,380,31.565,-7.892,40.19,-121.84,,False,,False,,False,False
-2019-06-03,D24,O,2,-1,380,33.118,-6.458,45.97,-107.66,,False,,False,,False,False
-2019-06-03,D24,O,2,2,380,28.821,-7.31,43.91,-112.15,,False,,False,,False,False
-2019-06-03,D24,O,3,0,380,31.525,-7.498,40.04,-123.04,,False,,False,,False,False
-2019-07-12,D08,C,-4,-1,450,36.843,-9.738,32.32,-220.01,,False,,False,,False,False
-2019-07-12,D08,C,-3,-3,450,37.06,-9.853,32.69,-218.92,,False,,False,,False,False
-2019-07-12,D08,C,-3,0,450,36.589,-10.323,34.18,-208.32,,False,,False,,False,False
-2019-07-12,D08,C,-3,2,450,37.113,-12.083,31.92,-222.17,,False,,False,,False,False
-2019-07-12,D08,C,-1,-3,450,35.932,-10.292,32.08,-224.07,,False,,False,,False,False
-2019-07-12,D08,C,-1,-1,450,35.448,-9.162,37.23,-191.68,,False,,False,,False,False
-2019-07-12,D08,C,-1,3,450,37.911,-10.763,34.98,-202.41,,False,,False,,False,False
-2019-07-12,D08,C,0,-4,450,39.026,-12.481,36.13,-199.12,,False,,False,,False,False
-2019-07-12,D08,C,0,0,450,37.349,-9.8,33.14,-214.56,,False,,False,,False,False
-2019-07-12,D08,C,0,2,450,36.498,-9.744,34.82,-204.04,,False,,False,,False,False
-2019-07-12,D08,C,2,-3,450,38.493,-11.849,35.05,-203.22,,False,,False,,False,False
-2019-07-12,D08,C,2,-1,450,39.186,-9.867,33.45,-211.9,,False,,False,,False,False
-2019-07-12,D08,C,2,2,450,36.272,-11.982,34.25,-207.84,,False,,False,,False,False
-2019-07-12,D08,C,3,0,450,37.102,-10.264,34.38,-206.71,,False,,False,,False,False
-2019-07-15,D07,C,-4,-1,450,34.371,-10.923,32.63,-218.4,,False,,False,,False,False
-2019-07-15,D07,C,-3,-3,450,39.212,-9.741,35.35,-201.05,,False,,False,,False,False
-2019-07-15,D07,C,-3,0,450,38.696,-9.875,36.11,-196.1,,False,,False,,False,False
-2019-07-15,D07,C,-3,2,450,36.72,-12.361,34.56,-208.04,,False,,False,,False,False
-2019-07-15,D07,C,-1,-3,450,38.416,-9.987,34.91,-205.43,,False,,False,,False,False
-2019-07-15,D07,C,-1,-1,450,36.597,-10.028,34.86,-204.71,,False,,False,,False,False
-2019-07-15,D07,C,-1,3,450,36.881,-10.702,31.31,-227.18,,False,,False,,False,False
-2019-07-15,D07,C,0,-4,450,38.014,-11.385,34.44,-205.98,,False,,False,,False,False
-2019-07-15,D07,C,0,0,450,37.603,-10.471,35.47,-201.0,,False,,False,,False,False
-2019-07-15,D07,C,0,2,450,36.939,-9.158,34.99,-207.5,,False,,False,,False,False
-2019-07-15,D07,C,2,-3,450,40.336,-10.869,35.07,-202.94,,False,,False,,False,False
-2019-07-15,D07,C,2,-1,450,37.159,-9.427,29.68,-244.24,,False,,False,,False,False
-2019-07-15,D07,C,2,2,450,37.279,-10.442,34.88,-205.23,,False,,False,,False,False
-2019-07-15,D07,C,3,0,450,36.389,-9.808,34.51,-209.72,,False,,False,,False,False
+﻿Date,Wafer,Band,Row,Col,Width_nm,ER_dB,IL_dB,Vpi_V,dlam_dV_pm_per_V,vpi_status,reason_ER_dB,out_of_bound_ER_dB,reason_IL_dB,out_of_bound_IL_dB,reason_Vpi_V,out_of_bound_Vpi_V,is_problematic
+2019-05-26,D08,O,-4,-1,380,29.897,-8.174,26.78,-180.3,ok,,False,,False,,False,False
+2019-05-26,D08,O,-3,-3,380,30.202,-9.367,29.32,-166.8,ok,,False,,False,,False,False
+2019-05-26,D08,O,-3,0,380,31.749,-8.149,29.5,-166.41,ok,,False,,False,,False,False
+2019-05-26,D08,O,-3,2,380,32.285,-8.518,26.46,-186.65,ok,,False,,False,,False,False
+2019-05-26,D08,O,-1,-3,380,32.17,-7.512,28.49,-172.51,ok,,False,,False,,False,False
+2019-05-26,D08,O,-1,-1,380,30.274,-6.595,30.46,-161.57,ok,,False,,False,,False,False
+2019-05-26,D08,O,-1,3,380,32.435,-8.897,26.34,-186.21,ok,,False,,False,,False,False
+2019-05-26,D08,O,0,-4,380,32.383,-8.239,27.28,-179.2,ok,,False,,False,,False,False
+2019-05-26,D08,O,0,0,380,31.172,-6.248,30.36,-162.44,ok,,False,,False,,False,False
+2019-05-26,D08,O,0,2,380,30.347,-6.932,27.58,-178.67,ok,,False,,False,,False,False
+2019-05-26,D08,O,2,-3,380,32.134,-7.603,28.1,-173.13,ok,,False,,False,,False,False
+2019-05-26,D08,O,2,-1,380,32.724,-6.275,27.81,-177.9,ok,,False,,False,,False,False
+2019-05-26,D08,O,2,2,380,33.164,-6.498,27.6,-178.79,ok,,False,,False,,False,False
+2019-05-26,D08,O,3,0,380,31.483,-6.572,28.74,-169.78,ok,,False,,False,,False,False
+2019-05-31,D23,O,-4,-1,380,27.875,-8.499,,3.13,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=3.13)",True,True
+2019-05-31,D23,O,-3,-3,380,30.779,-9.741,,2.3,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=2.30)",True,True
+2019-05-31,D23,O,-3,0,380,33.244,-7.332,,-0.06,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.06)",True,True
+2019-05-31,D23,O,-3,2,380,30.773,-7.382,,0.59,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.59)",True,True
+2019-05-31,D23,O,-1,-3,380,31.699,-9.219,,0.15,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.15)",True,True
+2019-05-31,D23,O,-1,-1,380,30.992,-7.065,,1.16,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.16)",True,True
+2019-05-31,D23,O,-1,3,380,32.503,-8.1,,-4.66,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=4.66)",True,True
+2019-05-31,D23,O,0,-4,380,31.825,-8.028,,-1.61,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.61)",True,True
+2019-05-31,D23,O,0,0,380,29.592,-6.775,,0.21,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.21)",True,True
+2019-05-31,D23,O,0,2,380,32.478,-6.919,,-1.2,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.20)",True,True
+2019-05-31,D23,O,2,-3,380,33.422,-7.398,,1.35,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.35)",True,True
+2019-05-31,D23,O,2,-1,380,31.506,-6.857,,2.31,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=2.31)",True,True
+2019-05-31,D23,O,2,2,380,33.974,-6.436,,-0.08,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.08)",True,True
+2019-05-31,D23,O,3,0,380,34.457,-6.541,,1.3,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.30)",True,True
+2019-05-31,D24,O,-4,-1,380,29.102,-8.821,,0.91,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.91)",True,True
+2019-05-31,D24,O,-3,-3,380,32.241,-9.843,,0.28,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.28)",True,True
+2019-05-31,D24,O,-3,0,380,31.9,-8.044,,0.27,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.27)",True,True
+2019-05-31,D24,O,-3,2,380,29.778,-8.036,,1.33,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.33)",True,True
+2019-05-31,D24,O,-1,-3,380,30.524,-8.673,,0.61,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.61)",True,True
+2019-05-31,D24,O,-1,-1,380,29.688,-6.785,,0.3,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.30)",True,True
+2019-05-31,D24,O,-1,3,380,32.253,-8.525,,1.76,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.76)",True,True
+2019-05-31,D24,O,0,-4,380,32.91,-8.239,,-1.84,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=1.84)",True,True
+2019-05-31,D24,O,0,0,380,29.881,-6.785,,-0.57,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.57)",True,True
+2019-05-31,D24,O,0,2,380,31.358,-6.643,,0.11,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.11)",True,True
+2019-05-31,D24,O,2,-3,380,31.543,-7.891,,3.44,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=3.44)",True,True
+2019-05-31,D24,O,2,-1,380,31.925,-6.389,,0.87,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.87)",True,True
+2019-05-31,D24,O,2,2,380,28.69,-7.481,,-0.88,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.88)",True,True
+2019-05-31,D24,O,3,0,380,31.412,-7.55,,-0.71,slope_filter,,False,,False,"broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.71)",True,True
+2019-06-03,D23,O,-4,-1,380,29.083,-8.322,36.18,-133.85,ok,,False,,False,,False,False
+2019-06-03,D23,O,-3,-3,380,31.257,-9.721,42.12,-116.09,ok,,False,,False,,False,False
+2019-06-03,D23,O,-3,0,380,32.936,-7.292,42.05,-116.4,ok,,False,,False,,False,False
+2019-06-03,D23,O,-3,2,380,30.942,-7.466,35.49,-137.06,ok,,False,,False,,False,False
+2019-06-03,D23,O,-1,-3,380,30.964,-9.174,45.89,-107.06,ok,,False,,False,,False,False
+2019-06-03,D23,O,-1,-1,380,30.056,-7.066,44.36,-112.21,ok,,False,,False,,False,False
+2019-06-03,D23,O,-1,3,380,31.848,-7.954,35.16,-140.86,ok,,False,,False,,False,False
+2019-06-03,D23,O,0,-4,380,32.196,-8.017,38.29,-128.09,ok,,False,,False,,False,False
+2019-06-03,D23,O,0,0,380,29.911,-6.744,46.64,-106.92,ok,,False,,False,,False,False
+2019-06-03,D23,O,0,2,380,32.627,-6.911,40.54,-120.67,ok,,False,,False,,False,False
+2019-06-03,D23,O,2,-3,380,32.794,-7.334,37.81,-130.6,ok,,False,,False,,False,False
+2019-06-03,D23,O,2,-1,380,31.937,-6.962,42.12,-118.08,ok,,False,,False,,False,False
+2019-06-03,D23,O,2,2,380,34.566,-6.487,42.37,-115.51,ok,,False,,False,,False,False
+2019-06-03,D23,O,3,0,380,34.394,-6.538,37.93,-129.17,ok,,False,,False,,False,False
+2019-06-03,D24,O,-4,-1,380,29.868,-8.519,41.34,-118.03,ok,,False,,False,,False,False
+2019-06-03,D24,O,-3,-3,380,31.996,-9.754,37.35,-130.75,ok,,False,,False,,False,False
+2019-06-03,D24,O,-3,0,380,32.033,-7.907,38.19,-127.31,ok,,False,,False,,False,False
+2019-06-03,D24,O,-3,2,380,29.014,-7.995,40.4,-121.69,ok,,False,,False,,False,False
+2019-06-03,D24,O,-1,-3,380,31.671,-8.967,39.5,-123.84,ok,,False,,False,,False,False
+2019-06-03,D24,O,-1,-1,380,31.376,-6.944,44.23,-111.39,ok,,False,,False,,False,False
+2019-06-03,D24,O,-1,3,380,32.741,-8.506,38.16,-128.72,ok,,False,,False,,False,False
+2019-06-03,D24,O,0,-4,380,33.284,-8.225,42.95,-113.59,ok,,False,,False,,False,False
+2019-06-03,D24,O,0,0,380,30.201,-6.855,43.37,-114.23,ok,,False,,False,,False,False
+2019-06-03,D24,O,0,2,380,32.125,-6.539,41.84,-117.58,ok,,False,,False,,False,False
+2019-06-03,D24,O,2,-3,380,31.565,-7.892,40.19,-121.84,ok,,False,,False,,False,False
+2019-06-03,D24,O,2,-1,380,33.118,-6.458,45.97,-107.66,ok,,False,,False,,False,False
+2019-06-03,D24,O,2,2,380,28.821,-7.31,43.91,-112.15,ok,,False,,False,,False,False
+2019-06-03,D24,O,3,0,380,31.525,-7.498,40.04,-123.04,ok,,False,,False,,False,False
+2019-07-12,D08,C,-4,-1,450,36.843,-9.738,32.32,-220.01,ok,,False,,False,,False,False
+2019-07-12,D08,C,-3,-3,450,37.06,-9.853,32.69,-218.92,ok,,False,,False,,False,False
+2019-07-12,D08,C,-3,0,450,36.589,-10.323,34.18,-208.32,ok,,False,,False,,False,False
+2019-07-12,D08,C,-3,2,450,37.113,-12.083,31.92,-222.17,ok,,False,,False,,False,False
+2019-07-12,D08,C,-1,-3,450,35.932,-10.292,32.08,-224.07,ok,,False,,False,,False,False
+2019-07-12,D08,C,-1,-1,450,35.448,-9.162,37.23,-191.68,ok,,False,,False,,False,False
+2019-07-12,D08,C,-1,3,450,37.911,-10.763,34.98,-202.41,ok,,False,,False,,False,False
+2019-07-12,D08,C,0,-4,450,39.026,-12.481,36.13,-199.12,ok,,False,,False,,False,False
+2019-07-12,D08,C,0,0,450,37.349,-9.8,33.14,-214.56,ok,,False,,False,,False,False
+2019-07-12,D08,C,0,2,450,36.498,-9.744,34.82,-204.04,ok,,False,,False,,False,False
+2019-07-12,D08,C,2,-3,450,38.493,-11.849,35.05,-203.22,ok,,False,,False,,False,False
+2019-07-12,D08,C,2,-1,450,39.186,-9.867,33.45,-211.9,ok,,False,,False,,False,False
+2019-07-12,D08,C,2,2,450,36.272,-11.982,34.25,-207.84,ok,,False,,False,,False,False
+2019-07-12,D08,C,3,0,450,37.102,-10.264,34.38,-206.71,ok,,False,,False,,False,False
+2019-07-15,D07,C,-4,-1,450,34.371,-10.923,32.63,-218.4,ok,,False,,False,,False,False
+2019-07-15,D07,C,-3,-3,450,39.212,-9.741,35.35,-201.05,ok,,False,,False,,False,False
+2019-07-15,D07,C,-3,0,450,38.696,-9.875,36.11,-196.1,ok,,False,,False,,False,False
+2019-07-15,D07,C,-3,2,450,36.72,-12.361,34.56,-208.04,ok,,False,,False,,False,False
+2019-07-15,D07,C,-1,-3,450,38.416,-9.987,34.91,-205.43,ok,,False,,False,,False,False
+2019-07-15,D07,C,-1,-1,450,36.597,-10.028,34.86,-204.71,ok,,False,,False,,False,False
+2019-07-15,D07,C,-1,3,450,36.881,-10.702,31.31,-227.18,ok,,False,,False,,False,False
+2019-07-15,D07,C,0,-4,450,38.014,-11.385,34.44,-205.98,ok,,False,,False,,False,False
+2019-07-15,D07,C,0,0,450,37.603,-10.471,35.47,-201.0,ok,,False,,False,,False,False
+2019-07-15,D07,C,0,2,450,36.939,-9.158,34.99,-207.5,ok,,False,,False,,False,False
+2019-07-15,D07,C,2,-3,450,40.336,-10.869,35.07,-202.94,ok,,False,,False,,False,False
+2019-07-15,D07,C,2,-1,450,37.159,-9.427,29.68,-244.24,ok,,False,,False,,False,False
+2019-07-15,D07,C,2,2,450,37.279,-10.442,34.88,-205.23,ok,,False,,False,,False,False
+2019-07-15,D07,C,3,0,450,36.389,-9.808,34.51,-209.72,ok,,False,,False,,False,False

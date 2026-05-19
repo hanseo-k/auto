@@ -13,7 +13,18 @@
 Null 트래킹이 이웃 null로 점프할 위험은 윈도우 크기 < FSR/2로 방지.
 
 ──────────────────────────────────────────────────────────────────────
-MIN_SLOPE_PM_PER_V (slope filter) — 망가진 측정 검출
+반환 dict 의 'vpi_status' — 명시적 상태 플래그 (꼬리표)
+──────────────────────────────────────────────────────────────────────
+    'ok'           : V_π 정상 추출
+    'slope_filter' : |dλ/dV| < MIN_SLOPE_PM_PER_V — 측정 망가짐 (V_π=NaN)
+    'no_nulls'     : deep null < 2 개 — FSR 추출 실패 (모두 NaN)
+    'no_slopes'    : 모든 null tracking 이 점프로 reject (V_π=NaN)
+    'few_biases'   : reverse-bias 데이터 부족 (3개 미만)
+    'no_sweeps'    : sweep 데이터 자체가 없음
+이 플래그는 CSV/XLSX 생성 모듈에서 사람 친화적 reason 으로 변환됨.
+
+──────────────────────────────────────────────────────────────────────
+MIN_SLOPE_PM_PER_V (slope filter) — 망가진 측정 검출 근거
 ──────────────────────────────────────────────────────────────────────
 바이어스를 인가했는데도 null 파장이 거의 움직이지 않으면 (dλ/dV ≈ 0)
 V_π = FSR / (2·|0|) → 무한대로 폭주.  이건 디바이스가 그런 게 아니라
@@ -33,9 +44,21 @@ HY202103 의 정상 디바이스 dλ/dV 범위 (실측 검증):
     - min_slope=10 → 망가진 28개 100% NaN, 정상 70개 0개 false positive
 """
 
-MIN_SLOPE_PM_PER_V = 10.0   # |dλ/dV| 이 이 값 미만이면 측정 망가진 것으로 간주
 import numpy as np
 from scipy.signal import find_peaks
+
+
+MIN_SLOPE_PM_PER_V = 10.0   # |dλ/dV| 이 이 값 미만이면 측정 망가진 것으로 간주
+
+# 사람 친화적 reason 메시지 매핑 (CSV/XLSX 모듈에서 활용)
+STATUS_MESSAGE = {
+    'ok':           '',
+    'slope_filter': 'broken: |dλ/dV| < {thr:.0f} pm/V (slope filter, |dλ/dV|={dl:.2f})',
+    'no_nulls':     'broken: deep null < 2 (FSR 추출 실패)',
+    'no_slopes':    'broken: 모든 null tracking jump-reject',
+    'few_biases':   'broken: reverse-bias 데이터 < 3개',
+    'no_sweeps':    'broken: sweep 데이터 없음',
+}
 
 
 def _parabolic_null(L, IL, lam_guess, half):
@@ -54,24 +77,27 @@ def _parabolic_null(L, IL, lam_guess, half):
 
 
 def extract_vpi(die):
-    """반환: dict { 'fsr_nm', 'dlam_dV_pm_per_V', 'vpi_V' }"""
+    """반환: dict { 'fsr_nm', 'dlam_dV_pm_per_V', 'vpi_V', 'vpi_status' }
+
+    vpi_status 가 'ok' 가 아닌 경우 vpi_V 는 NaN.
+    dλ/dV 와 FSR 은 가능한 한 보존 (진단용).
+    """
     sweeps = die['sweeps']
     biases = sorted(sweeps.keys())
     if len(biases) < 3:
-        return _nan_result()
+        return _result(status='no_sweeps')
 
     L0, I0 = sweeps[biases[0]]
     distance = max(1, int(1.0 / (L0[1] - L0[0])))
     peaks, _ = find_peaks(-I0, prominence=10, distance=distance)
     deep = sorted([float(L0[p]) for p in peaks if I0[p] < -25])
     if len(deep) < 2:
-        return _nan_result()
+        return _result(status='no_nulls')
     fsr = float(np.median(np.diff(deep)))
 
     rev_biases = [v for v in biases if v <= 0.0]
     if len(rev_biases) < 3:
-        return {'fsr_nm': round(fsr, 4),
-                'dlam_dV_pm_per_V': float('nan'), 'vpi_V': float('nan')}
+        return _result(fsr=fsr, status='few_biases')
 
     half = min(0.4, fsr * 0.35)
     slopes = []
@@ -92,8 +118,7 @@ def extract_vpi(die):
         slopes.append(s)
 
     if not slopes:
-        return {'fsr_nm': round(fsr, 4),
-                'dlam_dV_pm_per_V': float('nan'), 'vpi_V': float('nan')}
+        return _result(fsr=fsr, status='no_slopes')
 
     slopes = np.array(slopes)
     if len(slopes) >= 3:
@@ -106,19 +131,28 @@ def extract_vpi(die):
 
     # Slope filter: 너무 작으면 측정 망가진 것 → V_π 폭주 방지
     if abs(dlam_dV_pm) < MIN_SLOPE_PM_PER_V:
-        return {'fsr_nm': round(fsr, 4),
-                'dlam_dV_pm_per_V': round(dlam_dV_pm, 2),
-                'vpi_V': float('nan')}
+        return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm, status='slope_filter')
 
     vpi = fsr / (2 * abs(dlam_dV))
+    return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm, vpi=vpi, status='ok')
+
+
+def _result(fsr=None, dlam_dV_pm=None, vpi=None, status='ok'):
+    """반환 dict 만드는 helper."""
     return {
-        'fsr_nm': round(fsr, 4),
-        'dlam_dV_pm_per_V': round(dlam_dV_pm, 2),
-        'vpi_V': round(vpi, 2),
+        'fsr_nm':           round(fsr, 4) if fsr is not None else float('nan'),
+        'dlam_dV_pm_per_V': round(dlam_dV_pm, 2) if dlam_dV_pm is not None else float('nan'),
+        'vpi_V':            round(vpi, 2) if vpi is not None else float('nan'),
+        'vpi_status':       status,
     }
 
 
-def _nan_result():
-    return {'fsr_nm': float('nan'),
-            'dlam_dV_pm_per_V': float('nan'),
-            'vpi_V': float('nan')}
+def status_to_reason(status, dlam_dV_pm=None):
+    """vpi_status → 사람 친화적 reason 문자열."""
+    if status == 'ok':
+        return ''
+    msg = STATUS_MESSAGE.get(status, f'unknown status: {status}')
+    if status == 'slope_filter':
+        return msg.format(thr=MIN_SLOPE_PM_PER_V,
+                          dl=abs(dlam_dV_pm) if dlam_dV_pm is not None else float('nan'))
+    return msg

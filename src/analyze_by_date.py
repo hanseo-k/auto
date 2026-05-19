@@ -24,7 +24,7 @@ from matplotlib.patches import Rectangle
 from xml_loader import load_die, BAND_OF_FILE
 from extract_er import extract_er
 from extract_il import extract_il
-from extract_vpi import extract_vpi
+from extract_vpi import extract_vpi, status_to_reason
 from outlier_detect import PHYSICAL_BOUNDS
 
 
@@ -62,6 +62,7 @@ def _process(args):
         'IL_dB':    extract_il(die),
         'Vpi_V':    vpi_info['vpi_V'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],  # slope filter 진단용
+        'vpi_status': vpi_info['vpi_status'],              # 명시적 꼬리표
     }
 
 
@@ -77,15 +78,20 @@ def _reason(value, lo, hi):
 
 
 def _vpi_reason(row):
-    """V_π 전용 reason — slope filter 발동했으면 그것까지 명시."""
-    from extract_vpi import MIN_SLOPE_PM_PER_V
+    """V_π 전용 reason.
+
+    1순위: vpi_status 꼬리표 (extract_vpi 가 명시적으로 내보낸 상태)
+    2순위: physical bound 위반 (over/under)
+    """
+    status = row.get('vpi_status', 'ok')
+    dl = row.get('dlam_dV_pm_per_V')
+    # extract_vpi 가 망가짐 플래그를 직접 띄운 경우
+    if status != 'ok':
+        return status_to_reason(status, dlam_dV_pm=dl)
+    # 추출은 성공했으나 물리바운드 위반
     lo, hi = PHYSICAL_BOUNDS['Vpi_V']
     v = row['Vpi_V']
-    dl = row.get('dlam_dV_pm_per_V')
     if pd.isna(v):
-        # V_π 가 NaN — slope filter 발동인지 확인
-        if pd.notna(dl) and abs(dl) < MIN_SLOPE_PM_PER_V:
-            return f'broken: |dλ/dV|={abs(dl):.2f} < {MIN_SLOPE_PM_PER_V:.0f} pm/V (slope filter)'
         return 'missing'
     if v < lo:
         return f'under: {v:.2f} < {lo}'
