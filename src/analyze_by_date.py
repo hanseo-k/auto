@@ -63,18 +63,96 @@ def _process(args):
     }
 
 
+def _reason(value, lo, hi):
+    """Out-of-bound 사유 문자열. 정상이면 빈 문자열."""
+    if pd.isna(value):
+        return 'missing'
+    if value < lo:
+        return f'under: {value:.2f} < {lo}'
+    if value > hi:
+        return f'over: {value:.2f} > {hi}'
+    return ''
+
+
 def _flag_problematic(df):
-    """각 항목별 physical bound 위반 + 종합 is_problematic 컬럼 추가."""
+    """각 항목별 reason 컬럼 + 종합 is_problematic.
+
+    기준: PHYSICAL_BOUNDS (Si MZM 물리 한계).
+        ER:  0   ~ 45 dB
+        IL: -20  ~  0 dB
+        Vpi: 5   ~ 80 V
+    물리적으로 불가능한 값을 'too large/small' 로 판정.
+    z-score 가 아니라 물리 hard limit 을 쓰는 이유:
+        - z-score 는 같은 그룹 내 상대비교일 뿐 (그룹 전체가 망가져도 z는 정상)
+        - Vpi 5478V 같은 값은 물리적으로 불가능 → 물리바운드가 정답
+    """
     for col in ['ER_dB', 'IL_dB', 'Vpi_V']:
         lo, hi = PHYSICAL_BOUNDS[col]
-        bad = (df[col] < lo) | (df[col] > hi) | df[col].isna()
-        df[f'out_of_bound_{col}'] = bad
+        df[f'reason_{col}'] = df[col].apply(lambda v: _reason(v, lo, hi))
+        df[f'out_of_bound_{col}'] = df[f'reason_{col}'] != ''
     df['is_problematic'] = (
         df['out_of_bound_ER_dB'] |
         df['out_of_bound_IL_dB'] |
         df['out_of_bound_Vpi_V']
     )
     return df
+
+
+def export_xlsx(df, path):
+    """xlsx 저장 — 문제 셀(reason 비어있지 않음, is_problematic=True)에 빨간 배경."""
+    from openpyxl import Workbook
+    from openpyxl.styles import PatternFill, Font, Alignment
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'data_by_date'
+
+    headers = list(df.columns)
+    ws.append(headers)
+
+    # 헤더 스타일
+    header_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9', fill_type='solid')
+    for col_idx in range(1, len(headers) + 1):
+        c = ws.cell(row=1, column=col_idx)
+        c.font = Font(bold=True)
+        c.fill = header_fill
+        c.alignment = Alignment(horizontal='center')
+
+    red_fill   = PatternFill(start_color='FFC7C7', end_color='FFC7C7', fill_type='solid')
+    red_font   = Font(color='B00020', bold=True)
+    metric_cols = ['ER_dB', 'IL_dB', 'Vpi_V']
+
+    for _, row in df.iterrows():
+        ws.append([row[c] for c in headers])
+        excel_row = ws.max_row
+
+        # is_problematic 셀
+        if bool(row.get('is_problematic')):
+            ci = headers.index('is_problematic') + 1
+            cell = ws.cell(row=excel_row, column=ci)
+            cell.fill = red_fill
+            cell.font = red_font
+
+        # reason_X 가 비어있지 않으면 reason + 원본 metric 둘 다 빨강
+        for m in metric_cols:
+            rc = f'reason_{m}'
+            if rc in headers and row.get(rc):
+                # reason 컬럼
+                ci = headers.index(rc) + 1
+                ws.cell(row=excel_row, column=ci).fill = red_fill
+                ws.cell(row=excel_row, column=ci).font = red_font
+                # 원본 metric 값
+                mi = headers.index(m) + 1
+                ws.cell(row=excel_row, column=mi).fill = red_fill
+                ws.cell(row=excel_row, column=mi).font = red_font
+
+    # 열 너비 자동 (대략)
+    for col_idx, name in enumerate(headers, 1):
+        ws.column_dimensions[ws.cell(row=1, column=col_idx).column_letter].width = max(
+            12, min(28, len(name) + 2))
+
+    wb.save(path)
+    print(f'XLSX 저장: {path}')
 
 
 def analyze(data_root=DATA_ROOT):
@@ -164,18 +242,21 @@ def plot_by_date(df, save_path):
     print(f'By-date plot saved: {save_path}')
 
 
-def export_and_plot(df=None, csv_path=None, fig_path=None):
+def export_and_plot(df=None, csv_path=None, xlsx_path=None, fig_path=None):
     """run.py 에서 호출용. df 없으면 분석부터 수행."""
     if df is None:
         df = analyze(DATA_ROOT)
     if csv_path is None:
         csv_path = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data_by_date.csv')
+    if xlsx_path is None:
+        xlsx_path = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data_by_date.xlsx')
     if fig_path is None:
         fig_path = os.path.join(PROGRAM_ROOT, 'res', 'figures', 'by_date_summary.png')
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     os.makedirs(os.path.dirname(fig_path), exist_ok=True)
     df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     print(f'CSV 저장: {csv_path}')
+    export_xlsx(df, xlsx_path)
     plot_by_date(df, fig_path)
     return df
 
