@@ -19,13 +19,13 @@ import numpy as np
 import multiprocessing
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 
 from xml_loader import load_die, BAND_OF_FILE
 from extract_er import extract_er
 from extract_il import extract_il
 from extract_vpi import extract_vpi, status_to_reason
 from outlier_detect import PHYSICAL_BOUNDS
+from plot_common import WAFER_BAND_COLOR
 
 
 DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
@@ -195,13 +195,6 @@ def analyze(data_root=DATA_ROOT):
     df = df.reset_index(drop=True)
     df = _flag_problematic(df)
     return df
-
-
-# 색상: Wafer-Band 별
-WAFER_BAND_COLOR = {
-    ('D07', 'C'): '#4C72B0', ('D08', 'C'): '#7AA0CB',
-    ('D08', 'O'): '#DD8452', ('D23', 'O'): '#E8A87C', ('D24', 'O'): '#F4B999',
-}
 
 
 def plot_by_date(df, save_path):

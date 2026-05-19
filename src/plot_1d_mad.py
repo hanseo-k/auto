@@ -9,22 +9,11 @@ import os
 import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, FancyArrowPatch
+from matplotlib.patches import Rectangle
 from matplotlib.lines import Line2D
 
 from outlier_detect import PHYSICAL_BOUNDS
-
-
-WAFER_BAND_COLOR = {
-    ('D07', 'C'): '#4C72B0', ('D08', 'C'): '#7AA0CB',
-    ('D08', 'O'): '#DD8452', ('D23', 'O'): '#E8A87C', ('D24', 'O'): '#F4B999',
-}
-
-
-def _ordered_groups(df):
-    pairs = sorted({(w, b) for w, b in zip(df['Wafer'], df['Band'])},
-                   key=lambda x: (x[1] != 'C', x[0]))
-    return pairs
+from plot_common import WAFER_BAND_COLOR, ordered_groups
 
 
 def _mad_stats(values):
@@ -70,7 +59,7 @@ def _draw_mad_box(ax, x_center, med, sigma, color, width=0.4):
 def plot_1d_mad(df, value_col, label, save_path):
     out_col = f'is_outlier_{value_col}'
     lo, hi = PHYSICAL_BOUNDS[value_col]
-    groups = _ordered_groups(df)
+    groups = ordered_groups(df)
 
     fig, ax = plt.subplots(figsize=(11, 6), dpi=140)
 

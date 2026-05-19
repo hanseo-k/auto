@@ -9,7 +9,7 @@
 실제 데이터는 보존하고 시각화에서만 다르게 표시 (속이 빈 마커 등).
 """
 import numpy as np
-import pandas as pd  # noqa
+import pandas as pd
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -21,35 +21,12 @@ import pandas as pd  # noqa
 #   - MMI splitter/combiner (single-stage)
 #   - polarization filter / cascaded MZI / DC bias section 없음
 #
-# 자세한 근거와 인용은 README 의 "Physical Bounds" 섹션 참조.
-# 요약:
-#   ER  (Extinction Ratio):    5 ~ 35 dB
-#       - 단일 MMI splitter 의 산업적 ER 상한 ≈ 30 dB (Witzens 2018, Table II)
-#       - 35 dB 이상은 push-pull/cascaded 거나 측정 아티팩트
-#       - 5 dB 미만은 working device 라 보기 어려움 (MMI 균형 깨짐/도파로 깨짐)
-#
-#   IL  (Insertion Loss, ON-state peak):   -15 ~ -1 dB
-#       - 표준 Si MZM ON-state IL ≈ 4 ~ 10 dB (Reed 2010, Witzens 2018)
-#       - -1 dB 미만(= 더 좋음)은 비물리적 (커플링/MMI 손실만 해도 ≥1dB)
-#       - -15 dB 미만(= 더 나쁨)은 깨진 디바이스
-#
-#   Vpi (Half-wave voltage):   2 ~ 60 V
-#       - Si depletion V_π·L = 1 ~ 3 V·cm  (Soref & Bennett 1987, Witzens 2018)
-#       - 긴 phase shifter (5 mm)  → V_π·L=1 → V_π ≈ 2 V
-#       - 짧은 phase shifter (0.5 mm) → V_π·L=3 → V_π ≈ 60 V
-#       - 60 V 초과는 dλ/dV ≈ 0 (트래킹 실패) 의 산술적 폭주이지 실제 V_π 아님
-#
-# 인용 (full citation 은 README 참조):
-#   [1] Soref & Bennett, IEEE JQE 23, 123 (1987)        — plasma dispersion 이론
-#   [2] Reed et al., Nature Photonics 4, 518 (2010)     — Si modulator review
-#   [3] Patel et al., Opt. Express 23, 14263 (2015)     — 41 GHz Si MZM, 측정값
-#   [4] Witzens, Proc. IEEE 106, 2158 (2018)            — 종합 review (Table II)
+# 각 bound 의 상세 근거 / 인용 / empirical validation 은 README 의
+# "Physical Bounds" 섹션 참조. 60 V 초과 V_π 는 dλ/dV ≈ 0 (측정 망가짐)
+# 의 산술적 폭주이지 실제 V_π 아님 → extract_vpi.MIN_SLOPE_PM_PER_V 가
+# 먼저 NaN 처리하므로 여기 도달 안 함.
 # ──────────────────────────────────────────────────────────────────────
 PHYSICAL_BOUNDS = {
-    # 문헌 + HY202103 실측 분포(README "Physical Bounds — Empirical Validation"
-    # 참조)를 함께 고려한 범위. 문헌 표준보다 ER 상한이 다소 넓은 이유는
-    # 우리 ER 정의(모든 바이어스에서의 peak−null)가 fixed-bias ER 보다
-    # 자연스럽게 크게 나오기 때문 + HY202103 실측이 ~37 dB 영역에 있음.
     'ER_dB':  (10.0, 45.0),    # working device 하한 10 dB / 측정 아티팩트 상한 45 dB
     'IL_dB':  (-15.0, -1.0),   # ON-state peak transmission (fiber-to-fiber, dB)
     'Vpi_V':  (2.0,  60.0),    # V_π·L ∈ [1, 3] V·cm × L ∈ [0.5, 5] mm

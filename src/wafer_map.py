@@ -36,7 +36,7 @@ def plot_wafer_map(df, value_col, label, save_path):
     for ax, (w, b) in zip(axes, pairs):
         sub = df[(df['Wafer'] == w) & (df['Band'] == b)]
         last = _panel(ax, sub, value_col, out_col, vlim,
-                      f'{w}  [{b}-band]', label)
+                      f'{w}  [{b}-band]')
     if last is not None:
         cbar = fig.colorbar(last, ax=axes, shrink=0.85, pad=0.02)
         cbar.set_label(label)
@@ -47,17 +47,14 @@ def plot_wafer_map(df, value_col, label, save_path):
     print(f'Wafer map saved: {save_path}')
 
 
-def _panel(ax, sub, col, out_col, vlim, title, label):
+def _panel(ax, sub, col, out_col, vlim, title):
     x = sub['Col'].to_numpy(dtype=float)
     y = sub['Row'].to_numpy(dtype=float)
     z = sub[col].to_numpy(dtype=float)
     is_out = sub[out_col].to_numpy(dtype=bool) if out_col in sub else \
              np.zeros_like(z, dtype=bool)
-    z_col = f'robust_z_{col}'
-    rz = (sub[z_col].to_numpy(dtype=float)
-          if z_col in sub else np.full_like(z, np.nan))
     valid = ~np.isnan(z)
-    x, y, z, is_out, rz = x[valid], y[valid], z[valid], is_out[valid], rz[valid]
+    x, y, z, is_out = x[valid], y[valid], z[valid], is_out[valid]
     if len(x) < 3:
         ax.set_title(title); return None
 

@@ -13,9 +13,10 @@ HY202103 MZM 측정 XML 을 자동으로 파싱해서 ER, IL, V_π 를 추출하
 │   ├── xml_loader.py          # XML 파싱
 │   ├── extract_er.py          # ER 추출 (sensitivity test 검증된 16 nm 윈도우)
 │   ├── extract_il.py          # IL 추출
-│   ├── extract_vpi.py         # V_π 추출 (slope filter 포함)
+│   ├── extract_vpi.py         # V_π 추출 (slope filter + vpi_status 꼬리표)
 │   ├── outlier_detect.py      # 물리바운드 + Robust Z outlier
 │   ├── csv_export.py          # 결과 폴더 / CSV 저장
+│   ├── plot_common.py         # 플롯 공통 헬퍼 (WAFER_BAND_COLOR, ordered_groups)
 │   ├── wafer_map.py           # 웨이퍼맵 (Delaunay surface)
 │   ├── plot_1d.py             # 1D 분포 (IQR 박스)
 │   ├── plot_1d_mad.py         # 1D 분포 (MAD 박스)
@@ -141,6 +142,47 @@ HY202103 의 정상/망가짐 데이터에서 검증 (`src/sensitivity_test.py`)
 ```
 
 dλ/dV 값은 그대로 보고함 (CSV 의 `dlam_dV_pm_per_V` 컬럼) — 진단 가능.
+
+## `vpi_status` — 명시적 상태 꼬리표
+
+`extract_vpi` 는 V_π 추출 결과와 함께 **`vpi_status`** 라는 명시적 꼬리표를 같이
+반환함. 추출이 왜 실패/성공했는지를 추론하지 않고도 알 수 있게 하는 장치.
+
+| `vpi_status` | 의미 | `vpi_V` |
+|--------------|------|---------|
+| `ok` | 정상 추출 | 실제 값 |
+| `slope_filter` | \|dλ/dV\| < 10 pm/V (측정 망가짐) | NaN |
+| `no_nulls` | deep null < 2 개 — FSR 추출 실패 | NaN |
+| `no_slopes` | 모든 null tracking 이 점프로 reject | NaN |
+| `few_biases` | reverse-bias 데이터 < 3 개 | NaN |
+| `no_sweeps` | sweep 데이터 자체 없음 | NaN |
+
+CSV/XLSX 모듈은 이 꼬리표를 받아서 `extract_vpi.status_to_reason()` 을 호출,
+사람 친화적 reason 문자열을 만들어 `reason_Vpi_V` 컬럼에 기록:
+
+```
+broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.06)
+```
+
+**왜 꼬리표가 필요한가:**
+이전엔 `Vpi_V` 가 NaN 이면 reason 컬럼이 그냥 `missing` 으로 표시됐는데,
+그게 (a) slope filter 발동 (b) FSR 추출 실패 (c) 데이터 부족 중 어느 건지
+모호했음. 명시적 꼬리표로 한 번에 분리 가능.
+
+코드 흐름:
+```
+extract_vpi.extract_vpi(die)
+    → { fsr_nm, dlam_dV_pm_per_V, vpi_V, vpi_status }
+                                          ↓
+run.py / analyze_by_date.py
+    → row dict 에 그대로 보존
+                                          ↓
+analyze_by_date._vpi_reason
+    → status_to_reason(vpi_status, dlam_dV_pm_per_V)
+    → 'broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.06)'
+                                          ↓
+xlsx 의 reason_Vpi_V 셀에 표시 (빨간 배경)
+```
 
 ---
 

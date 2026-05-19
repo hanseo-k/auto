@@ -11,28 +11,15 @@ import os
 import numpy as np
 import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
 
 from outlier_detect import PHYSICAL_BOUNDS
-
-
-WAFER_BAND_COLOR = {
-    ('D07', 'C'): '#4C72B0', ('D08', 'C'): '#7AA0CB',
-    ('D08', 'O'): '#DD8452', ('D23', 'O'): '#E8A87C', ('D24', 'O'): '#F4B999',
-}
-
-
-def _ordered_groups(df):
-    """C-band 먼저, 그 다음 O-band. 각 밴드 안에서 wafer 이름 정렬."""
-    pairs = sorted({(w, b) for w, b in zip(df['Wafer'], df['Band'])},
-                   key=lambda x: (x[1] != 'C', x[0]))
-    return pairs
+from plot_common import WAFER_BAND_COLOR, ordered_groups
 
 
 def plot_1d(df, value_col, label, save_path):
     out_col = f'is_outlier_{value_col}'
     lo, hi = PHYSICAL_BOUNDS[value_col]
-    groups = _ordered_groups(df)
+    groups = ordered_groups(df)
 
     fig, ax = plt.subplots(figsize=(11, 6), dpi=140)
 
@@ -56,14 +43,11 @@ def plot_1d(df, value_col, label, save_path):
         patch.set_facecolor(c); patch.set_alpha(0.55)
 
     # 산점도 — 모든 다이 (신뢰는 채움, outlier는 속 빈)
-    z_col = f'robust_z_{value_col}'
     rng = np.random.default_rng(42)
     for i, (w, b) in enumerate(groups):
         sub = df[(df['Wafer'] == w) & (df['Band'] == b)]
         z = sub[value_col].to_numpy(dtype=float)
         out = sub[out_col].to_numpy(dtype=bool)
-        rz = (sub[z_col].to_numpy(dtype=float)
-              if z_col in sub else np.full_like(z, np.nan))
         x = rng.normal(i + 1, 0.06, size=len(z))
         c = colors[i]
         m = ~out & ~np.isnan(z)
