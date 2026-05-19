@@ -33,12 +33,14 @@ from xml_loader import find_all_xmls, load_die
 from extract_er import extract_er
 from extract_il import extract_il
 from extract_vpi import extract_vpi
+from extract_passive_params import extract_passive_params
 from outlier_detect import mark_outliers
 from csv_export import make_run_dir, export_csv
 import wafer_map
 import plot_1d
 import plot_1d_mad
 import zscore_map
+import decompose_variation
 import analyze_by_date
 
 
@@ -53,6 +55,7 @@ def process_die(xml_path):
     er = extract_er(die)
     il = extract_il(die)
     vpi_info = extract_vpi(die)
+    passive  = extract_passive_params(die, er)
     return {
         'Wafer':    die['wafer'],
         'Band':     die['band'],
@@ -65,6 +68,11 @@ def process_die(xml_path):
         'FSR_nm':           vpi_info['fsr_nm'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
         'vpi_status':       vpi_info['vpi_status'],
+        # passive 파라미터 (APL Photonics 2024 영감)
+        'amplitude_ratio_k': passive['amplitude_ratio_k'],
+        'power_split_ratio': passive['power_split_ratio'],
+        'imbalance_dB':      passive['imbalance_dB'],
+        'mzm_loss_dB':       passive['mzm_loss_dB'],
     }
 
 
@@ -92,6 +100,9 @@ def _run_plot(args):
     elif plot_type == 'zscore':
         import zscore_map as _m
         _m.plot_zscore_map(df, col, label, os.path.join(run_dir, f'zscore_map_{col}.png'))
+    elif plot_type == 'decompose':
+        import decompose_variation as _m
+        _m.plot_decomposition(df, col, label, os.path.join(run_dir, f'decompose_{col}.png'))
 
 
 def _sync_to_res(run_dir):
@@ -154,7 +165,7 @@ def main():
     print('[5/6] 플롯 생성 (4종 × 3 metric = 12작업, 멀티코어 병렬)...')
     tasks = [
         (kind, col, label, df, run_dir)
-        for kind in ('wafer', '1d', '1d_mad', 'zscore')
+        for kind in ('wafer', '1d', '1d_mad', 'zscore', 'decompose')
         for col, label in METRICS
     ]
     with ProcessPoolExecutor(max_workers=None) as ex:
