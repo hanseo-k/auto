@@ -1,11 +1,11 @@
-"""날짜별 분석 — HY202103 폴더의 모든 측정 날짜를 분리해서 CSV 생성.
+"""날짜별 분석 — HY202103 폴더의 모든 측정 날짜를 분리해서 CSV + 그림 생성.
 
 `xml_loader.find_all_xmls` 는 같은 (다이, 밴드) 에 대해 최신 측정만 남기지만,
 이 스크립트는 모든 날짜의 측정을 보존해서 시간 변화를 추적할 수 있게 함.
 
 출력:
-    res/csv/data_by_date.csv
-    컬럼: Date, Wafer, Band, Row, Col, Width_nm, ER_dB, IL_dB, Vpi_V
+    res/csv/data_by_date.csv         — Date, Wafer, Band, Row, Col, ER, IL, Vpi, is_problematic
+    res/figures/by_date_summary.png  — 날짜별 추이 그림 (물리바운드 밖 = 빨강)
 
 실행:
     python3 src/analyze_by_date.py
@@ -15,23 +15,24 @@ PROGRAM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROGRAM_ROOT, 'src'))
 
 import pandas as pd
+import numpy as np
 import multiprocessing
+import matplotlib; matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
 
 from xml_loader import load_die, BAND_OF_FILE
 from extract_er import extract_er
 from extract_il import extract_il
 from extract_vpi import extract_vpi
+from outlier_detect import PHYSICAL_BOUNDS
 
 
 DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
 
 
 def find_all_xmls_with_dates(root_dir):
-    """모든 LMZC/LMZO XML 반환 (dedup 없음).
-
-    경로에 포함된 YYYYMMDD_HHMMSS 폴더에서 날짜를 추출.
-    반환: [(xml_path, 'YYYY-MM-DD'), ...]
-    """
+    """모든 LMZC/LMZO XML 반환 (dedup 없음). 경로 YYYYMMDD_HHMMSS 에서 날짜 추출."""
     items = []
     for tag in BAND_OF_FILE:
         pattern = os.path.join(root_dir, '**', f'*_DCM_{tag}.xml')
@@ -62,33 +63,136 @@ def _process(args):
     }
 
 
+def _flag_problematic(df):
+    """각 항목별 physical bound 위반 + 종합 is_problematic 컬럼 추가."""
+    for col in ['ER_dB', 'IL_dB', 'Vpi_V']:
+        lo, hi = PHYSICAL_BOUNDS[col]
+        bad = (df[col] < lo) | (df[col] > hi) | df[col].isna()
+        df[f'out_of_bound_{col}'] = bad
+    df['is_problematic'] = (
+        df['out_of_bound_ER_dB'] |
+        df['out_of_bound_IL_dB'] |
+        df['out_of_bound_Vpi_V']
+    )
+    return df
+
+
 def analyze(data_root=DATA_ROOT):
-    """모든 날짜 측정을 추출해서 DataFrame 반환."""
+    """모든 날짜 측정을 추출해서 DataFrame 반환 (is_problematic 포함)."""
     items = find_all_xmls_with_dates(data_root)
     with multiprocessing.Pool() as pool:
         results = pool.map(_process, items)
     rows = [r for r in results if r is not None]
     df = pd.DataFrame(rows).sort_values(['Date', 'Band', 'Wafer', 'Row', 'Col'])
-    return df.reset_index(drop=True)
+    df = df.reset_index(drop=True)
+    df = _flag_problematic(df)
+    return df
+
+
+# 색상: Wafer-Band 별
+WAFER_BAND_COLOR = {
+    ('D07', 'C'): '#4C72B0', ('D08', 'C'): '#7AA0CB',
+    ('D08', 'O'): '#DD8452', ('D23', 'O'): '#E8A87C', ('D24', 'O'): '#F4B999',
+}
+
+
+def plot_by_date(df, save_path):
+    """날짜별 ER/IL/Vpi 추이 — 물리바운드 밖은 빨간색."""
+    metrics = [
+        ('ER_dB', 'Extinction Ratio (dB)'),
+        ('IL_dB', 'Insertion Loss (dB)'),
+        ('Vpi_V', 'V_pi (V)'),
+    ]
+    dates = sorted(df['Date'].unique())
+    date_to_x = {d: i for i, d in enumerate(dates)}
+
+    fig, axes = plt.subplots(3, 1, figsize=(11, 12), dpi=140, sharex=True)
+    rng = np.random.default_rng(42)
+
+    for ax, (col, label) in zip(axes, metrics):
+        lo, hi = PHYSICAL_BOUNDS[col]
+        # 물리 신뢰 영역
+        ax.axhspan(lo, hi, color='lightgreen', alpha=0.18, zorder=0,
+                   label=f'physical bound [{lo}, {hi}]')
+
+        # 정상 값
+        ok = ~df[f'out_of_bound_{col}']
+        for (w, b), color in WAFER_BAND_COLOR.items():
+            sub = df[ok & (df['Wafer'] == w) & (df['Band'] == b)]
+            if sub.empty:
+                continue
+            xs = [date_to_x[d] + rng.normal(0, 0.06) for d in sub['Date']]
+            ax.scatter(xs, sub[col], facecolor=color, edgecolor='black',
+                       s=40, lw=0.4, alpha=0.85, label=f'{w}[{b}]', zorder=3)
+
+        # 문제 값 → 빨간색 (속 빈 마커)
+        bad = df[df[f'out_of_bound_{col}']]
+        if not bad.empty:
+            xs = [date_to_x[d] + rng.normal(0, 0.06) for d in bad['Date']]
+            ax.scatter(xs, bad[col], facecolor='red', edgecolor='darkred',
+                       s=80, lw=1.2, marker='x', zorder=5,
+                       label=f'⚠ out of bound (n={len(bad)})')
+
+        ax.set_ylabel(label, fontsize=11)
+        ax.grid(alpha=0.3, axis='y')
+
+        # Vpi 가 너무 크게 튀면 y축 자르고 위쪽 텍스트로 알림
+        if col == 'Vpi_V' and df[col].max() > hi * 3:
+            ax.set_ylim(0, hi * 2)
+            n_over = int((df[col] > hi * 2).sum())
+            if n_over > 0:
+                ax.text(0.99, 0.95, f'⚠ {n_over}개 값이 축 위로 벗어남',
+                        transform=ax.transAxes, ha='right', va='top',
+                        color='red', fontweight='bold', fontsize=10)
+
+        # 범례 — 항목별로 중복 제거
+        h, l = ax.get_legend_handles_labels()
+        seen, uniq_h, uniq_l = set(), [], []
+        for hi_, li in zip(h, l):
+            if li not in seen:
+                seen.add(li); uniq_h.append(hi_); uniq_l.append(li)
+        ax.legend(uniq_h, uniq_l, fontsize=8, loc='best', framealpha=0.85)
+
+    axes[-1].set_xticks(range(len(dates)))
+    axes[-1].set_xticklabels(dates, rotation=30, ha='right')
+    axes[-1].set_xlabel('Measurement Date')
+    fig.suptitle('Per-Date Summary  —  problematic values in red',
+                 fontsize=14, fontweight='bold', y=1.00)
+    plt.tight_layout()
+    plt.savefig(save_path, bbox_inches='tight')
+    plt.close(fig)
+    print(f'By-date plot saved: {save_path}')
+
+
+def export_and_plot(df=None, csv_path=None, fig_path=None):
+    """run.py 에서 호출용. df 없으면 분석부터 수행."""
+    if df is None:
+        df = analyze(DATA_ROOT)
+    if csv_path is None:
+        csv_path = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data_by_date.csv')
+    if fig_path is None:
+        fig_path = os.path.join(PROGRAM_ROOT, 'res', 'figures', 'by_date_summary.png')
+    os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+    os.makedirs(os.path.dirname(fig_path), exist_ok=True)
+    df.to_csv(csv_path, index=False, encoding='utf-8-sig')
+    print(f'CSV 저장: {csv_path}')
+    plot_by_date(df, fig_path)
+    return df
 
 
 def main():
     print('=' * 60)
     print(' 날짜별 분석 시작')
     print('=' * 60)
-
     items = find_all_xmls_with_dates(DATA_ROOT)
     print(f'\n발견된 다이-측정: {len(items)}개')
     print('병렬 추출 중...')
-
     df = analyze(DATA_ROOT)
     print(f'        → {len(df)}개 측정 처리 완료')
+    n_bad = int(df['is_problematic'].sum())
+    print(f'        → 물리바운드 위반: {n_bad}개')
 
-    out_dir = os.path.join(PROGRAM_ROOT, 'res', 'csv')
-    os.makedirs(out_dir, exist_ok=True)
-    out_path = os.path.join(out_dir, 'data_by_date.csv')
-    df.to_csv(out_path, index=False, encoding='utf-8-sig')
-    print(f'\nCSV 저장: {out_path}')
+    export_and_plot(df)
 
     # 날짜별 요약
     print('\n[날짜별 측정 수 (Wafer/Band)]')

@@ -39,6 +39,7 @@ import wafer_map
 import plot_1d
 import plot_1d_mad
 import zscore_map
+import analyze_by_date
 
 
 DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
@@ -161,9 +162,15 @@ def main():
             f.result()
     print('        → 모든 플롯 완료')
 
-    # 6) res/csv, res/figures 동기화 + GitHub push
-    print('[6/6] res/csv, res/figures 동기화 + GitHub push...')
+    # 6a) res/csv, res/figures 동기화 (먼저 — 기존 파일 지우고 새로 복사)
+    print('[6/6] res/csv, res/figures 동기화...')
     _sync_to_res(run_dir)
+
+    # 6b) 날짜별 분석 — sync 뒤에 실행해야 결과 보존됨
+    print('       날짜별 분석 (data_by_date.csv + by_date_summary.png)...')
+    analyze_by_date.export_and_plot()
+
+    # 6c) GitHub push
     subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
     status = subprocess.run(['git', '-C', PROGRAM_ROOT, 'diff', '--cached', '--quiet'])
     if status.returncode != 0:
