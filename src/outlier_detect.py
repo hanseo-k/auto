@@ -12,21 +12,43 @@ import numpy as np
 import pandas as pd  # noqa
 
 
-# ──────────────────────────────────────────────
-# Si MZM 물리 한계 — 우리 디바이스 타입 기준
-#   디바이스 사양: standard TE-mode Si depletion MZM,
-#                  single-arm drive, MMI splitter, single-stage,
-#                  no polarization filter / no push-pull / no cascaded
+# ──────────────────────────────────────────────────────────────────────
+# PHYSICAL_BOUNDS — Si depletion MZM 의 물리적으로 가능한 값 범위.
 #
-# Reference:
-#   Patel et al., Opt. Express 23, 14263 (2015) — 41GHz Si MZM
-#   Witzens, Proc. IEEE 106, 2158 (2018) — 종합 review
-#   Soref & Bennett, IEEE JQE 23, 123 (1987) — plasma dispersion
-# ──────────────────────────────────────────────
+# 디바이스 사양 (HY202103 가정):
+#   - TE-mode Si depletion-type MZM
+#   - single-arm drive (push-pull 아님)
+#   - MMI splitter/combiner (single-stage)
+#   - polarization filter / cascaded MZI / DC bias section 없음
+#
+# 자세한 근거와 인용은 README 의 "Physical Bounds" 섹션 참조.
+# 요약:
+#   ER  (Extinction Ratio):    5 ~ 35 dB
+#       - 단일 MMI splitter 의 산업적 ER 상한 ≈ 30 dB (Witzens 2018, Table II)
+#       - 35 dB 이상은 push-pull/cascaded 거나 측정 아티팩트
+#       - 5 dB 미만은 working device 라 보기 어려움 (MMI 균형 깨짐/도파로 깨짐)
+#
+#   IL  (Insertion Loss, ON-state peak):   -15 ~ -1 dB
+#       - 표준 Si MZM ON-state IL ≈ 4 ~ 10 dB (Reed 2010, Witzens 2018)
+#       - -1 dB 미만(= 더 좋음)은 비물리적 (커플링/MMI 손실만 해도 ≥1dB)
+#       - -15 dB 미만(= 더 나쁨)은 깨진 디바이스
+#
+#   Vpi (Half-wave voltage):   2 ~ 60 V
+#       - Si depletion V_π·L = 1 ~ 3 V·cm  (Soref & Bennett 1987, Witzens 2018)
+#       - 긴 phase shifter (5 mm)  → V_π·L=1 → V_π ≈ 2 V
+#       - 짧은 phase shifter (0.5 mm) → V_π·L=3 → V_π ≈ 60 V
+#       - 60 V 초과는 dλ/dV ≈ 0 (트래킹 실패) 의 산술적 폭주이지 실제 V_π 아님
+#
+# 인용 (full citation 은 README 참조):
+#   [1] Soref & Bennett, IEEE JQE 23, 123 (1987)        — plasma dispersion 이론
+#   [2] Reed et al., Nature Photonics 4, 518 (2010)     — Si modulator review
+#   [3] Patel et al., Opt. Express 23, 14263 (2015)     — 41 GHz Si MZM, 측정값
+#   [4] Witzens, Proc. IEEE 106, 2158 (2018)            — 종합 review (Table II)
+# ──────────────────────────────────────────────────────────────────────
 PHYSICAL_BOUNDS = {
-    'ER_dB':  (0.0,   45.0),   # standard TE Si depletion MZM with MMI splitter
-    'IL_dB':  (-20.0,  0.0),   # 표준 IL (peak transmission) 운용 한계
-    'Vpi_V':  (5.0,   80.0),   # V_π·L 1~3 V·cm × 짧은 phase shifter
+    'ER_dB':  (5.0,  35.0),    # single-arm MMI Si depletion MZM (working device)
+    'IL_dB':  (-15.0, -1.0),   # ON-state peak transmission (fiber-to-fiber, dB)
+    'Vpi_V':  (2.0,  60.0),    # V_π·L ∈ [1, 3] V·cm × L ∈ [0.5, 5] mm
 }
 
 
