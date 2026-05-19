@@ -1,9 +1,9 @@
-"""Outlier 검출 — 물리 한계 + Hampel filter (이웃 비교).
+"""Outlier 검출 — 물리 한계 + Robust Z-score.
 
 3-sigma는 정규성·표본 크기 가정 때문에 안 씀.
 대신:
   Layer 1: 물리적 한계 바운드 (신뢰성 가장 높음, n 무관)
-  Layer 2: Hampel filter (공간 이웃과의 robust 비교)
+  Layer 2: Robust Z-score (median/MAD 기반, per Wafer-Band 그룹)
 
 각 다이마다 boolean 플래그 ('is_outlier')를 붙여 반환.
 실제 데이터는 보존하고 시각화에서만 다르게 표시 (속이 빈 마커 등).
@@ -45,7 +45,7 @@ def robust_z_outlier(df, col, k=3.0):
         z'       = (x − median) / σ_robust  (3-sigma의 robust 버전)
         outlier  if  |z'| > k               (k=3 이면 3-sigma 동등 임계)
 
-    웨이퍼당 14다이로는 지역적 비교(Hampel) 의미가 적으므로,
+    웨이퍼당 14다이로는 지역적(이웃) 비교 의미가 적으므로,
     같은 (Wafer, Band) 그룹 전체의 median/MAD를 reference로 사용.
 
     Reference: Iglewicz & Hoaglin, "How to Detect and Handle Outliers",
