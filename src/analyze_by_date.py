@@ -50,6 +50,7 @@ def _process(args):
     die = load_die(xml_path)
     if die is None:
         return None
+    vpi_info = extract_vpi(die)
     return {
         'Date':     date_str,
         'Wafer':    die['wafer'],
@@ -59,7 +60,8 @@ def _process(args):
         'Width_nm': die['width_nm'],
         'ER_dB':    extract_er(die),
         'IL_dB':    extract_il(die),
-        'Vpi_V':    extract_vpi(die)['vpi_V'],
+        'Vpi_V':    vpi_info['vpi_V'],
+        'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],  # slope filter 진단용
     }
 
 
@@ -74,22 +76,44 @@ def _reason(value, lo, hi):
     return ''
 
 
+def _vpi_reason(row):
+    """V_π 전용 reason — slope filter 발동했으면 그것까지 명시."""
+    from extract_vpi import MIN_SLOPE_PM_PER_V
+    lo, hi = PHYSICAL_BOUNDS['Vpi_V']
+    v = row['Vpi_V']
+    dl = row.get('dlam_dV_pm_per_V')
+    if pd.isna(v):
+        # V_π 가 NaN — slope filter 발동인지 확인
+        if pd.notna(dl) and abs(dl) < MIN_SLOPE_PM_PER_V:
+            return f'broken: |dλ/dV|={abs(dl):.2f} < {MIN_SLOPE_PM_PER_V:.0f} pm/V (slope filter)'
+        return 'missing'
+    if v < lo:
+        return f'under: {v:.2f} < {lo}'
+    if v > hi:
+        return f'over: {v:.2f} > {hi}'
+    return ''
+
+
 def _flag_problematic(df):
     """각 항목별 reason 컬럼 + 종합 is_problematic.
 
     기준: PHYSICAL_BOUNDS (Si MZM 물리 한계).
-        ER:  0   ~ 45 dB
-        IL: -20  ~  0 dB
-        Vpi: 5   ~ 80 V
-    물리적으로 불가능한 값을 'too large/small' 로 판정.
     z-score 가 아니라 물리 hard limit 을 쓰는 이유:
         - z-score 는 같은 그룹 내 상대비교일 뿐 (그룹 전체가 망가져도 z는 정상)
-        - Vpi 5478V 같은 값은 물리적으로 불가능 → 물리바운드가 정답
+        - 물리적으로 불가능한 값은 물리바운드만이 잡아낼 수 있음
+
+    V_π 의 경우 slope filter (extract_vpi.MIN_SLOPE_PM_PER_V) 가
+    NaN 으로 처리한 케이스를 별도로 표시:
+        'broken: |dλ/dV|=0.06 < 10 pm/V (slope filter)'
     """
-    for col in ['ER_dB', 'IL_dB', 'Vpi_V']:
+    # ER, IL: 단순 reason
+    for col in ['ER_dB', 'IL_dB']:
         lo, hi = PHYSICAL_BOUNDS[col]
         df[f'reason_{col}'] = df[col].apply(lambda v: _reason(v, lo, hi))
         df[f'out_of_bound_{col}'] = df[f'reason_{col}'] != ''
+    # V_π: slope filter 정보까지 포함
+    df['reason_Vpi_V'] = df.apply(_vpi_reason, axis=1)
+    df['out_of_bound_Vpi_V'] = df['reason_Vpi_V'] != ''
     df['is_problematic'] = (
         df['out_of_bound_ER_dB'] |
         df['out_of_bound_IL_dB'] |
