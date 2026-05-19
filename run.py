@@ -56,7 +56,7 @@ def process_die(xml_path):
     il = extract_il(die)
     vpi_info = extract_vpi(die)
     passive  = extract_passive_params(die, er)
-    return {
+    row = {
         'Wafer':    die['wafer'],
         'Band':     die['band'],
         'Row':      die['row'],
@@ -68,12 +68,16 @@ def process_die(xml_path):
         'FSR_nm':           vpi_info['fsr_nm'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
         'vpi_status':       vpi_info['vpi_status'],
-        # passive 파라미터 (APL Photonics 2024 영감)
+        # ── Splitter 영역 ─────────────────────────────────────────
         'amplitude_ratio_k': passive['amplitude_ratio_k'],
         'power_split_ratio': passive['power_split_ratio'],
         'imbalance_dB':      passive['imbalance_dB'],
         'mzm_loss_dB':       passive['mzm_loss_dB'],
     }
+    # 바이어스별 imbalance — 'splitter 영역' 의 상세 컬럼 (V 순서대로)
+    for V in sorted(passive['imbalance_per_bias_dB'].keys()):
+        row[f'imbalance_V{V:+.2f}_dB'] = passive['imbalance_per_bias_dB'][V]
+    return row
 
 
 METRICS = [

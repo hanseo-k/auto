@@ -94,15 +94,55 @@ def extract_propagation_loss(die):
     return round(-peak_overall, 3)
 
 
+def coupler_imbalance_per_bias(die):
+    """각 바이어스에서의 splitter imbalance (dB) 를 dict 로 반환.
+
+    각 바이어스의 스펙트럼 안에서 peak-null 차이 = bias-별 ER 을 계산하고,
+    그로부터 imbalance_dB 를 동일 공식으로 유도한다.
+
+    반환: { V_bias (float) : imbalance_dB (float) }
+    """
+    from xml_loader import t_dev
+    from extract_er import ER_WINDOW_NM
+
+    band = die['band']
+    if band not in ER_WINDOW_NM:
+        return {}
+    lo, hi = ER_WINDOW_NM[band]
+    ref_L, ref_IL = die['ref_L'], die['ref_IL']
+
+    result = {}
+    for V, (L, IL_mzm) in die['sweeps'].items():
+        T = t_dev(L, IL_mzm, ref_L, ref_IL)
+        mask = (L >= lo) & (L <= hi)
+        if mask.sum() == 0:
+            result[float(V)] = float('nan')
+            continue
+        er_dB = float(T[mask].max() - T[mask].min())
+        if er_dB <= 0 or np.isnan(er_dB):
+            result[float(V)] = float('nan')
+            continue
+        er_lin = 10 ** (er_dB / 10)
+        sqrt_er = np.sqrt(er_lin)
+        k = (sqrt_er - 1) / (sqrt_er + 1)
+        if k <= 0:
+            result[float(V)] = float('nan')
+            continue
+        result[float(V)] = round(float(-20 * np.log10(k)), 3)
+    return result
+
+
 def extract_passive_params(die, er_dB):
     """ER 값 + 다이 spectrum 으로부터 passive 파라미터 dict.
 
     반환:
-        amplitude_ratio_k    : b/a, ≤ 1
-        power_split_ratio    : k², 1 이면 완벽 50:50
-        imbalance_dB         : −20 log₁₀ k, 0 dB 이상적
-        mzm_loss_dB          : MZM section 손실 (양수, dB)
+        amplitude_ratio_k       : b/a, ≤ 1
+        power_split_ratio       : k², 1 이면 완벽 50:50
+        imbalance_dB            : 전체 ER 기반 imbalance, 0 dB 이상적
+        mzm_loss_dB             : MZM section 손실 (양수, dB)
+        imbalance_per_bias_dB   : { V_bias : imbalance_dB }  (바이어스별 상세)
     """
     out = coupler_split_ratio_from_er(er_dB)
     out['mzm_loss_dB'] = extract_propagation_loss(die)
+    out['imbalance_per_bias_dB'] = coupler_imbalance_per_bias(die)
     return out
