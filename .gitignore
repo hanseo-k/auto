@@ -6,6 +6,7 @@ __pycache__/
 # macOS
 .DS_Store
 
-# results는 latest 만 깃에 올림 (타임스탬프 폴더는 로컬 보관용)
-results/*
-!results/latest/
+# res 안의 타임스탬프 폴더만 무시 (csv/, figures/ 는 추적)
+res/*/
+!res/csv/
+!res/figures/

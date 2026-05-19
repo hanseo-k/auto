@@ -1,6 +1,10 @@
 """실행 시각으로 폴더 만들고 CSV 저장.
 
-폴더명: results/YYYY-MM-DD_HH-MM-SS/
+폴더 구조:
+    res/<YYYY-MM-DD_HH-MM-SS>/  ← 각 실행 결과 (gitignored, 로컬 보관)
+    res/csv/data.csv            ← 최신 CSV (git 추적)
+    res/figures/*.png           ← 최신 그림 (git 추적)
+
 CSV 컬럼: Wafer, Band, Row, Col, Width_nm, ER_dB, IL_dB, Vpi_V,
          FSR_nm, dlam_dV_pm_per_V, is_trusted, is_outlier_*
 """
@@ -15,7 +19,7 @@ PROGRAM_ROOT = '/Users/gimhanseo/Desktop/공프/자동분석폴더'
 def make_run_dir():
     """실행 시각 기반 결과 폴더 생성, 경로 반환."""
     ts = datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    out = os.path.join(PROGRAM_ROOT, 'results', ts)
+    out = os.path.join(PROGRAM_ROOT, 'res', ts)
     os.makedirs(out, exist_ok=True)
     return out
 

@@ -1,19 +1,27 @@
 """
 ========================================================================
- 메인 분석 프로그램
+ 메인 분석 프로그램 — MZM 4-wafer 분석
 ========================================================================
 
 데이터 흐름:
     1) HY202103 폴더에서 모든 LMZC/LMZO XML 자동 탐색
     2) 다이별로 ER, IL, V_π 추출 — 멀티코어 병렬 처리
-    3) Outlier 검출 (물리 한계 + Hampel filter)
+    3) Outlier 검출 (물리 한계 + Robust Z-score)
     4) 실행 시각 폴더 만들고 CSV 저장
-    5) 웨이퍼맵 / 1D분포 / 1D+MAD / 신뢰도맵 — 4개 동시 생성
+    5) 웨이퍼맵 / 1D분포 / 1D+MAD / 신뢰도맵 — 12개 동시 생성
+    6) 최신 결과를 res/csv, res/figures 로 복사 후 GitHub 자동 push
 
-VSCode ▶ (F5) 로 그대로 실행 가능. 절대경로 사용.
+폴더 구조:
+    src/         - 분석 모듈
+    data/        - 입력 데이터 (HY202103 별도 위치 참조)
+    res/csv/     - 최신 CSV (git 추적)
+    res/figures/ - 최신 그림 (git 추적)
+    res/<ts>/    - 실행 시각별 보관 (gitignored)
+    doc/         - 방법론 그림 등
 """
 import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+PROGRAM_ROOT = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(PROGRAM_ROOT, 'src'))
 
 import pandas as pd
 import multiprocessing
@@ -33,8 +41,7 @@ import plot_1d_mad
 import trust_map
 
 
-DATA_ROOT    = '/Users/gimhanseo/Desktop/공프/HY202103'
-PROGRAM_ROOT = '/Users/gimhanseo/Desktop/공프/자동분석폴더'
+DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
 
 
 def process_die(xml_path):
@@ -65,7 +72,8 @@ METRICS = [
     ('Vpi_V', 'V_pi (V)'),
 ]
 
-# ── 플롯 작업 래퍼 — metric별로 쪼개서 12개 작업으로 (8코어 풀 활용) ──
+
+# ── 플롯 작업 래퍼 — metric별로 쪼개서 12개 작업으로 (코어 풀 활용) ──
 def _run_plot(args):
     """(plot_type, col, label, df, run_dir) → 개별 그래프 1장 생성."""
     import os
@@ -82,6 +90,29 @@ def _run_plot(args):
     elif plot_type == 'trust':
         import trust_map as _m
         _m.plot_trust_map(df, col, label, os.path.join(run_dir, f'trust_map_{col}.png'))
+
+
+def _sync_to_res(run_dir):
+    """run_dir의 최신 결과를 res/csv, res/figures 로 분리 복사."""
+    csv_dir = os.path.join(PROGRAM_ROOT, 'res', 'csv')
+    fig_dir = os.path.join(PROGRAM_ROOT, 'res', 'figures')
+    os.makedirs(csv_dir, exist_ok=True)
+    os.makedirs(fig_dir, exist_ok=True)
+    # 기존 파일 제거 (잔여물 방지)
+    for d in (csv_dir, fig_dir):
+        for f in os.listdir(d):
+            fp = os.path.join(d, f)
+            if os.path.isfile(fp):
+                os.remove(fp)
+    # 새로 복사
+    for f in os.listdir(run_dir):
+        src = os.path.join(run_dir, f)
+        if not os.path.isfile(src):
+            continue
+        if f.endswith('.csv'):
+            shutil.copy2(src, os.path.join(csv_dir, f))
+        elif f.endswith('.png'):
+            shutil.copy2(src, os.path.join(fig_dir, f))
 
 
 def main():
@@ -103,7 +134,7 @@ def main():
     print(f'        → {len(df)}개 다이 처리 완료')
 
     # 3) Outlier 검출
-    print('[3/6] Outlier 검출 (물리 바운드 + Hampel)...')
+    print('[3/6] Outlier 검출 (물리 바운드 + Robust Z)...')
     df = mark_outliers(df)
     n_trusted = int(df['is_trusted'].sum())
     print(f'        → 신뢰 다이 {n_trusted}/{len(df)}개')
@@ -117,19 +148,11 @@ def main():
     print(f'        → {run_dir}')
     export_csv(df, run_dir)
 
-    # 5~7) 플롯 12개 동시 생성 — 8코어 풀 활용
-    print('[5/7] 플롯 생성 (4종 × 3 metric = 12작업, 8코어 병렬)...')
+    # 5) 플롯 12개 동시 생성
+    print('[5/6] 플롯 생성 (4종 × 3 metric = 12작업, 멀티코어 병렬)...')
     tasks = [
-        ('wafer',  col, label, df, run_dir)
-        for col, label in METRICS
-    ] + [
-        ('1d',     col, label, df, run_dir)
-        for col, label in METRICS
-    ] + [
-        ('1d_mad', col, label, df, run_dir)
-        for col, label in METRICS
-    ] + [
-        ('trust',  col, label, df, run_dir)
+        (kind, col, label, df, run_dir)
+        for kind in ('wafer', '1d', '1d_mad', 'trust')
         for col, label in METRICS
     ]
     with ProcessPoolExecutor(max_workers=None) as ex:
@@ -137,6 +160,19 @@ def main():
         for f in futures:
             f.result()
     print('        → 모든 플롯 완료')
+
+    # 6) res/csv, res/figures 동기화 + GitHub push
+    print('[6/6] res/csv, res/figures 동기화 + GitHub push...')
+    _sync_to_res(run_dir)
+    subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
+    status = subprocess.run(['git', '-C', PROGRAM_ROOT, 'diff', '--cached', '--quiet'])
+    if status.returncode != 0:
+        subprocess.run(['git', '-C', PROGRAM_ROOT, 'commit', '-m',
+                        f'Update latest results ({os.path.basename(run_dir)})'], check=True)
+        subprocess.run(['git', '-C', PROGRAM_ROOT, 'push', 'origin', 'main'], check=True)
+        print('        → GitHub 업로드 완료')
+    else:
+        print('        → 변경사항 없음 — 스킵')
 
     print('\n' + '=' * 60)
     print(' 완료!  결과 위치:')
@@ -153,23 +189,6 @@ def main():
         Vpi=('Vpi_V', 'median'),
     ).round(2)
     print(summary)
-
-    # 최신 결과를 results/latest 에 복사 후 자동 push
-    print('\n[GitHub] 최신 결과 업로드 중...')
-    latest_dst = os.path.join(PROGRAM_ROOT, 'results', 'latest')
-    if os.path.exists(latest_dst):
-        shutil.rmtree(latest_dst)
-    shutil.copytree(run_dir, latest_dst)
-    subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
-    # 변경사항 없으면 commit 스킵
-    status = subprocess.run(['git', '-C', PROGRAM_ROOT, 'diff', '--cached', '--quiet'])
-    if status.returncode != 0:
-        subprocess.run(['git', '-C', PROGRAM_ROOT, 'commit', '-m',
-                        f'Update latest results ({os.path.basename(run_dir)})'], check=True)
-        subprocess.run(['git', '-C', PROGRAM_ROOT, 'push', 'origin', 'main'], check=True)
-        print('[GitHub] 업로드 완료!')
-    else:
-        print('[GitHub] 변경사항 없음 — 스킵')
 
 
 if __name__ == '__main__':
