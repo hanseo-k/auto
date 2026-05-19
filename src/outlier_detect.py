@@ -46,7 +46,11 @@ import pandas as pd  # noqa
 #   [4] Witzens, Proc. IEEE 106, 2158 (2018)            — 종합 review (Table II)
 # ──────────────────────────────────────────────────────────────────────
 PHYSICAL_BOUNDS = {
-    'ER_dB':  (5.0,  35.0),    # single-arm MMI Si depletion MZM (working device)
+    # 문헌 + HY202103 실측 분포(README "Physical Bounds — Empirical Validation"
+    # 참조)를 함께 고려한 범위. 문헌 표준보다 ER 상한이 다소 넓은 이유는
+    # 우리 ER 정의(모든 바이어스에서의 peak−null)가 fixed-bias ER 보다
+    # 자연스럽게 크게 나오기 때문 + HY202103 실측이 ~37 dB 영역에 있음.
+    'ER_dB':  (10.0, 45.0),    # working device 하한 10 dB / 측정 아티팩트 상한 45 dB
     'IL_dB':  (-15.0, -1.0),   # ON-state peak transmission (fiber-to-fiber, dB)
     'Vpi_V':  (2.0,  60.0),    # V_π·L ∈ [1, 3] V·cm × L ∈ [0.5, 5] mm
 }

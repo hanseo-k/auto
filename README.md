@@ -66,18 +66,27 @@ HY202103 는 표준 **TE-mode Si depletion MZM** 로 가정:
 
 이 가정이 깨지면 (예: push-pull 이거나 cascaded) 일부 상한이 더 커질 수 있음.
 
-## 1. ER (Extinction Ratio) — **5 ~ 35 dB**
+## 1. ER (Extinction Ratio) — **10 ~ 45 dB**
 
 | | 값 | 근거 |
 |--|---|----|
-| 하한 | 5 dB | working device 의 최소선. 그 이하는 MMI 균형이 깨졌거나 도파로 손상으로 판단 |
-| 상한 | 35 dB | single-arm MMI Si MZM 의 산업적 ER 상한. 그 이상은 push-pull/cascaded 거나 측정 노이즈 floor 의 아티팩트 |
+| 하한 | 10 dB | working device 의 최소선. 그 이하는 MMI 균형이 깨졌거나 도파로 손상으로 판단 |
+| 상한 | 45 dB | 우리 ER 정의(peak−null across biases) + HY202103 실측 분포 + 측정 아티팩트 margin |
 
 **왜 이 값인가:**
-- 표준 single-arm MMI 의 splitter imbalance 가 ~30 dB ER 한계를 만든다 (Witzens 2018, Table II)
-- Patel 2015 의 41 GHz Si MZM 도 standard MMI 로 ~25 dB 측정
-- 실제 push-pull / balanced 설계면 40 ~ 50 dB 도 가능하지만, HY202103 는 single-arm 이라 가정
-- ER이 측정 노이즈 floor 부근에서 산정되면 (T_dev_null 이 floor에 닿으면) 인공적으로 큰 값이 나옴 → 그 영역을 outlier 로 거른다
+- 표준 fixed-bias ER 의 산업적 상한 ≈ 30 dB (Witzens 2018, Table II) — single-arm MMI 의 splitter imbalance 한계
+- Patel 2015 의 standard MMI Si MZM: ~25 dB
+- **우리 ER 정의가 다름:** `extract_er.py` 는 *모든 바이어스의 peak − 모든 바이어스의 null* 를 fixed window 안에서 계산. 즉 "ever-achieved peak" 와 "ever-achieved null" 의 차이이므로 fixed-bias ER 보다 자연스럽게 크게 측정됨
+- **HY202103 실측 분포 (`res/csv/data.csv` 기준):**
+  - C-band: 32 ~ 40 dB (median 37)
+  - O-band: 29 ~ 35 dB (median 32)
+- 상한을 35 dB로 잡으면 C-band 정상 측정 전체가 outlier 처리됨 → 비합리
+- 상한 45 dB 는 실측 max(40.34) 위 ~5 dB margin. 그 이상은 노이즈 floor 인공값으로 판단
+- 하한 10 dB 는 working device 의 의미있는 minimum (10 dB 미만은 modulator 로 사용 불가)
+
+**검증 절차:** ER bound 는 문헌만으로는 부족하다는 점에 주의. 새로운 디바이스
+세대를 분석할 때는 이 코드를 한 번 돌리고 `res/csv/data.csv` 의 ER 분포를 보고
+실측 max + 5 dB 정도로 상한을 재조정하는 것이 권장됨.
 
 ## 2. IL (Insertion Loss, ON-state) — **−15 ~ −1 dB**
 
@@ -110,6 +119,18 @@ ALIGN 차감 안 함 (XML 의 IL 값이 이미 device IL 로 기록된 것으로
 
 **측정 정의:** V_π = FSR / (2 · |dλ_null / dV|).
 V ≤ 0 구간의 null 위치를 parabolic fit 으로 추적 → 선형 slope = dλ/dV.
+
+## Physical Bounds — Empirical Validation
+
+처음에 문헌만 보고 ER 상한을 35 dB 로 잡았을 때, HY202103 의 C-band 다이 28 개가
+**모두 outlier 처리**되는 문제가 발생함 (실측 ER median = 37 dB).
+
+이는 두 가지를 시사함:
+1. **HY202103 의 실제 ER 성능이 문헌 평균보다 높음** — high-uniformity MMI / 긴 phase shifter 등 high-ER 친화적 설계로 보임
+2. **우리 ER 정의가 fixed-bias ER 보다 큰 값을 줌** — peak/null 둘 다 모든 바이어스 중 best 를 골라서
+
+→ ER 상한을 45 dB 로 완화. 일반적으로 새 디바이스 데이터에 적용할 때는 문헌
+   bound 를 1차 추정으로 쓰되, 실측 분포를 보고 검증 / 조정해야 함.
 
 ## 인용
 
