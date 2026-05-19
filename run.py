@@ -8,7 +8,7 @@
     2) 다이별로 ER, IL, V_π 추출 — 멀티코어 병렬 처리
     3) Outlier 검출 (물리 한계 + Robust Z-score)
     4) 실행 시각 폴더 만들고 CSV 저장
-    5) 웨이퍼맵 / 1D분포 / 1D+MAD / 신뢰도맵 — 12개 동시 생성
+    5) 웨이퍼맵 / 1D분포 / 1D+MAD / Z-score맵 — 12개 동시 생성
     6) 최신 결과를 res/csv, res/figures 로 복사 후 GitHub 자동 push
 
 폴더 구조:
@@ -38,7 +38,7 @@ from csv_export import make_run_dir, export_csv
 import wafer_map
 import plot_1d
 import plot_1d_mad
-import trust_map
+import zscore_map
 
 
 DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
@@ -87,9 +87,9 @@ def _run_plot(args):
     elif plot_type == '1d_mad':
         import plot_1d_mad as _m
         _m.plot_1d_mad(df, col, label, os.path.join(run_dir, f'1d_mad_{col}.png'))
-    elif plot_type == 'trust':
-        import trust_map as _m
-        _m.plot_trust_map(df, col, label, os.path.join(run_dir, f'trust_map_{col}.png'))
+    elif plot_type == 'zscore':
+        import zscore_map as _m
+        _m.plot_zscore_map(df, col, label, os.path.join(run_dir, f'zscore_map_{col}.png'))
 
 
 def _sync_to_res(run_dir):
@@ -152,7 +152,7 @@ def main():
     print('[5/6] 플롯 생성 (4종 × 3 metric = 12작업, 멀티코어 병렬)...')
     tasks = [
         (kind, col, label, df, run_dir)
-        for kind in ('wafer', '1d', '1d_mad', 'trust')
+        for kind in ('wafer', '1d', '1d_mad', 'zscore')
         for col, label in METRICS
     ]
     with ProcessPoolExecutor(max_workers=None) as ex:

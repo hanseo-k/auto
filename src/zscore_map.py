@@ -1,10 +1,10 @@
-"""신뢰도 맵 — 각 다이의 Robust Z-score를 색으로.
+"""Robust Z-score 맵 — 각 다이의 Z-score를 격자에 색+숫자로.
 
 Robust Z = (x − median) / (1.4826 × MAD)   (per Wafer-Band 그룹)
 |Z| > 3 인 다이 = outlier (3-sigma의 robust 등가)
 
 색: 발산형 cmap (median=0 중심, 음/양 양쪽으로)
-숫자: |z| 값 표기
+숫자: z 값 표기 (outlier 는 "!" 표시)
 """
 import os
 import numpy as np
@@ -12,7 +12,7 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 
-def plot_trust_map(df, value_col, label, save_path):
+def plot_zscore_map(df, value_col, label, save_path):
     z_col = f'robust_z_{value_col}'
     out_col = f'is_outlier_{value_col}'
     if z_col not in df.columns:
@@ -64,7 +64,7 @@ def plot_trust_map(df, value_col, label, save_path):
                    '|z| > 3 = outlier  ("!" mark)')
     plt.savefig(save_path, bbox_inches='tight')
     plt.close(fig)
-    print(f'Trust map saved: {save_path}')
+    print(f'Z-score map saved: {save_path}')
 
 
 def plot_all(df, run_dir):
@@ -74,5 +74,5 @@ def plot_all(df, run_dir):
         ('Vpi_V', 'V_pi'),
     ]
     for col, label in metrics:
-        out = os.path.join(run_dir, f'trust_map_{col}.png')
-        plot_trust_map(df, col, label, out)
+        out = os.path.join(run_dir, f'zscore_map_{col}.png')
+        plot_zscore_map(df, col, label, out)
