@@ -102,7 +102,9 @@ def investigate_05_31():
     ax_top.legend(); ax_top.grid(alpha=0.3)
 
     # ── 하단: null 별 개별 패널 (Δλ 로 표시, 정상 ref overlay) ──
+    # 모든 바이어스 포함 (forward 도) 해서 거동 전체 보기
     half = min(0.4, fsr * 0.35) if not np.isnan(fsr) else 0.4
+    all_biases = sorted(sweeps.keys())   # forward 포함
 
     for i in range(n_nulls_show):
         ax = fig.add_subplot(gs[1, i])
@@ -110,40 +112,48 @@ def investigate_05_31():
             ax.axis('off'); continue
         lam0 = deep_lams[i]
 
-        # 망가진 측정 (현재 die)
+        # 망가진 측정 (모든 바이어스)
         positions = np.array([_parabolic_null(*sweeps[v], lam0, half)
-                              for v in rev_biases])
+                              for v in all_biases])
         valid = ~np.isnan(positions)
         if valid.sum() >= 2:
-            d_lam_pm = (positions - lam0) * 1000   # nm → pm
-            vb = np.array(rev_biases)
+            d_lam_pm = (positions - lam0) * 1000
+            vb = np.array(all_biases)
             ax.plot(vb[valid], d_lam_pm[valid], 'o-', color='crimson',
                     ms=6, lw=1.5, label='2019-05-31 (broken)')
-            # 선형 fit slope
-            s, _ = np.polyfit(vb[valid], positions[valid], 1)
-            ax.text(0.04, 0.95, f'slope = {s*1000:+.2f} pm/V',
-                    transform=ax.transAxes, va='top',
-                    color='crimson', fontsize=9, fontweight='bold')
+            # slope fit (reverse 만)
+            rev_only = vb <= 0
+            both = valid & rev_only
+            if both.sum() >= 2:
+                s, _ = np.polyfit(vb[both], positions[both], 1)
+                ax.text(0.04, 0.95, f'slope = {s*1000:+.2f} pm/V',
+                        transform=ax.transAxes, va='top',
+                        color='crimson', fontsize=9, fontweight='bold')
 
-        # 정상 측정 (가능하면 overlay)
+        # 정상 측정 (모든 바이어스 포함)
         if normal_target is not None:
             n_sweeps = normal_target['sweeps']
-            n_rev = sorted([v for v in n_sweeps if v <= 0.0])
+            n_all = sorted(n_sweeps.keys())
             n_positions = np.array([_parabolic_null(*n_sweeps[v], lam0, half)
-                                    for v in n_rev])
+                                    for v in n_all])
             n_valid = ~np.isnan(n_positions)
             if n_valid.sum() >= 2:
                 d_pm = (n_positions - lam0) * 1000
-                ax.plot(np.array(n_rev)[n_valid], d_pm[n_valid], 's--',
+                ax.plot(np.array(n_all)[n_valid], d_pm[n_valid], 's--',
                         color='steelblue', ms=5, lw=1.2, alpha=0.85,
                         label='2019-06-03 (normal)')
-                s2, _ = np.polyfit(np.array(n_rev)[n_valid],
-                                    n_positions[n_valid], 1)
-                ax.text(0.04, 0.85, f'slope = {s2*1000:+.2f} pm/V',
-                        transform=ax.transAxes, va='top',
-                        color='steelblue', fontsize=9, fontweight='bold')
+                nrev = np.array(n_all) <= 0
+                both = n_valid & nrev
+                if both.sum() >= 2:
+                    s2, _ = np.polyfit(np.array(n_all)[both],
+                                       n_positions[both], 1)
+                    ax.text(0.04, 0.85, f'slope = {s2*1000:+.2f} pm/V',
+                            transform=ax.transAxes, va='top',
+                            color='steelblue', fontsize=9, fontweight='bold')
 
         ax.axhline(0, color='gray', lw=0.6, ls=':')
+        ax.axvline(0, color='gray', lw=0.6, ls=':',
+                   label='V=0' if i == 0 else None)
         ax.set_xlabel('V_bias (V)'); ax.set_ylabel('Δλ_null (pm)')
         ax.set_title(f'null #{i+1}  @ {lam0:.2f} nm', fontsize=10)
         ax.grid(alpha=0.3)
@@ -343,7 +353,7 @@ def investigate_er_window():
 #  #7 — IV 곡선 시각화
 # ──────────────────────────────────────────────────────────────────────
 def investigate_iv():
-    hdr('#7  IV 곡선 시각화 (semi-log)')
+    hdr('#7  IV 곡선 시각화 (semi-log, 부호 컨벤션 정정)')
     items = find_all_xmls_with_dates(DATA_ROOT)
     # 한 wafer 의 다이 4개 IV 곡선
     targets = []
@@ -358,7 +368,7 @@ def investigate_iv():
                              figsize=(4.0 * len(targets), 7), dpi=120,
                              squeeze=False)
     fig.suptitle('#7  IV curves — linear (top) and |I| log (bottom)\n'
-                 'reverse bias V<0: near-linear / forward V>0: exponential',
+                 'sign flipped so forward (V>0) → I>0 (standard convention)',
                  fontsize=12, fontweight='bold', y=0.995)
 
     for col_idx, (w, fp) in enumerate(targets):
@@ -367,58 +377,68 @@ def investigate_iv():
             for r in range(2):
                 axes[r][col_idx].set_title(f'{w}: no IV'); axes[r][col_idx].axis('off')
             continue
-        V, I = die['iv_V'], die['iv_I']
+        V = die['iv_V']
+        # ⚠️ HY202103 측정 장비는 forward I 를 음수로 출력 → 부호 뒤집어 표준 컨벤션으로
+        I = -die['iv_I']
 
-        # 진단 통계
+        # 진단 통계 (표준 컨벤션 기준)
         I_at_neg2 = float(np.interp(-2.0, V, I)) if V.min() <= -2 else float('nan')
         I_at_pos05 = float(np.interp(0.5, V, I)) if V.max() >= 0.5 else float('nan')
+        I_at_pos1 = float(np.interp(1.0, V, I)) if V.max() >= 1.0 else float('nan')
 
-        # 상단: 선형 (단위 자동 결정 — μA 또는 mA)
+        # 상단: 선형 (단위 자동)
         max_abs = float(np.max(np.abs(I)))
-        if max_abs < 1e-3:   # < 1 mA → μA 표시
-            unit_scale, unit_label = 1e6, 'I (μA)'
+        if max_abs < 1e-6:
+            unit_scale, unit_label, fmt = 1e9, 'I (nA)', '.2f'
+        elif max_abs < 1e-3:
+            unit_scale, unit_label, fmt = 1e6, 'I (μA)', '.3f'
         else:
-            unit_scale, unit_label = 1e3, 'I (mA)'
+            unit_scale, unit_label, fmt = 1e3, 'I (mA)', '.2f'
         ax = axes[0][col_idx]
-        ax.plot(V, I * unit_scale, '-o', ms=3, lw=1, color='steelblue')
+        ax.plot(V, I * unit_scale, '-o', ms=4, lw=1.2, color='steelblue')
         ax.axhline(0, color='gray', lw=0.5); ax.axvline(0, color='gray', lw=0.5)
         ax.set_xlabel('V (V)'); ax.set_ylabel(unit_label)
         ax.set_title(f'{w}  ({die["band"]}-band, R={die["row"]} C={die["col"]})',
                      fontsize=10, fontweight='bold')
         ax.grid(alpha=0.3)
         ax.text(0.04, 0.95,
-                f'I @ -2V: {I_at_neg2*1e9:.2f} nA\n'
-                f'I @ +0.5V: {I_at_pos05*unit_scale:.2f} {unit_label[-3:-1]}',
-                transform=ax.transAxes, va='top', fontsize=9,
+                f'I@-2V:  {I_at_neg2*1e9:+.2f} nA\n'
+                f'I@+0.5V: {I_at_pos05*1e9:+.2g} nA\n'
+                f'I@+1V:   {I_at_pos1*1e3:+.3g} mA',
+                transform=ax.transAxes, va='top', fontsize=8, family='monospace',
                 bbox=dict(facecolor='white', alpha=0.85))
 
-        # 하단: |I| log
+        # 하단: |I| log + reverse / forward 색 구분
         ax = axes[1][col_idx]
         I_abs = np.abs(I)
-        # 0 이나 매우 작은 값 floor 처리
-        floor = max(1e-12, I_abs[I_abs > 0].min() if (I_abs > 0).any() else 1e-12)
+        floor = max(1e-13, I_abs[I_abs > 0].min() if (I_abs > 0).any() else 1e-13)
         I_clip = np.clip(I_abs, floor, None)
-        # 역바이어스(V<0) 빨강, 순방향(V>=0) 파랑
         rev_mask = V < 0
         fwd_mask = V >= 0
         ax.semilogy(V[rev_mask], I_clip[rev_mask], 'o-', color='crimson',
-                    ms=4, lw=1, label='reverse (V<0)')
+                    ms=5, lw=1.2, label='reverse (V<0)')
         ax.semilogy(V[fwd_mask], I_clip[fwd_mask], 's-', color='steelblue',
-                    ms=4, lw=1, label='forward (V≥0)')
+                    ms=5, lw=1.2, label='forward (V≥0)')
         ax.axvline(0, color='gray', lw=0.5)
         ax.set_xlabel('V (V)'); ax.set_ylabel('|I| (A, log)')
         ax.grid(alpha=0.3, which='both')
         ax.legend(fontsize=8, loc='lower right')
-        # forward 영역의 기대 기울기 (이상적: q/kT ≈ 38.9 /V at 300K)
-        # 즉 log10(I) 가 V 당 약 +16.9 (이상계수 n=1, kT/q=25.85mV)
-        # 우리 데이터에서 fit slope 계산
-        if fwd_mask.sum() >= 2 and (I_clip[fwd_mask] > floor * 10).any():
+
+        # forward 기울기 fit (V>0.3V 이상에서, conduction 영역)
+        # 이상적 Si 다이오드: ~16.9 dec/V (n=1, kT/q=25.85mV at 300K)
+        cond_mask = (V >= 0.3) & (I_clip > floor * 10)
+        if cond_mask.sum() >= 2:
             try:
-                slope_log10 = np.polyfit(V[fwd_mask], np.log10(I_clip[fwd_mask]), 1)[0]
+                slope_log10 = np.polyfit(V[cond_mask], np.log10(I_clip[cond_mask]), 1)[0]
+                # ideality factor: n = (1/Vt) / (slope·ln10)
+                # Vt = kT/q ≈ 0.02585 V at 300K
+                ideality = 1 / (slope_log10 * np.log(10) * 0.02585)
                 ax.text(0.04, 0.95,
-                        f'fwd slope ≈ {slope_log10:.1f} dec/V\n'
-                        f'(ideal Si: ~16.9)',
-                        transform=ax.transAxes, va='top', fontsize=9,
+                        f'fwd slope: {slope_log10:.1f} dec/V\n'
+                        f'ideality n ≈ {ideality:.2f}\n'
+                        f'(ideal: ~16.9, n=1)',
+                        transform=ax.transAxes, va='top', fontsize=8,
+                        family='monospace',
                         bbox=dict(facecolor='white', alpha=0.85))
             except Exception:
                 pass
@@ -429,17 +449,21 @@ def investigate_iv():
     plt.close(fig)
     print(f'그림 저장: {out_path}')
 
-    # 진단: 누설전류 / forward 기울기 통계
-    print('\n[다이별 IV 진단 — 처음 한 다이씩만]')
+    # 진단
+    print('\n[다이별 IV 진단 (부호 정정 후, 표준 컨벤션)]')
     for w, fp in targets:
         die = load_die(fp)
         if die is None or die['iv_V'] is None: continue
-        V, I = die['iv_V'], die['iv_I']
-        I_neg2 = float(np.interp(-2.0, V, I)) if V.min() <= -2 else float('nan')
-        I_pos05 = float(np.interp(0.5, V, I)) if V.max() >= 0.5 else float('nan')
-        print(f'  {w}: I@-2V={I_neg2*1e9:+8.2f} nA, '
-              f'I@+0.5V={I_pos05*1e6:+8.2f} μA  '
-              f'(ratio={abs(I_pos05/I_neg2):.0e} if linear scale)')
+        V = die['iv_V']
+        I = -die['iv_I']
+        I_neg2 = float(np.interp(-2.0, V, I))
+        I_pos05 = float(np.interp(0.5, V, I))
+        I_pos1 = float(np.interp(1.0, V, I))
+        diode_ratio = abs(I_pos1) / abs(I_neg2) if I_neg2 != 0 else float('inf')
+        print(f'  {w}: '
+              f'I@-2V (역누설)={I_neg2*1e9:+8.2f} nA, '
+              f'I@+1V (forward)={I_pos1*1e3:+9.3g} mA, '
+              f'rectification ratio = {diode_ratio:.1e}')
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -533,7 +557,8 @@ def investigate_dlam_map():
     for ax, (w, b) in zip(axes, pairs):
         sub = df[(df['Wafer'] == w) & (df['Band'] == b)]
         tcf = _contour_map_panel(ax, sub, 'dlam_dV_pm_per_V', (vmin, vmax),
-                                 cmap=cmap, show_numbers=False)
+                                 cmap=cmap, show_numbers=True,
+                                 number_fmt='+.0f')
         if tcf is not None: last = tcf
         ax.set_title(f'{w} [{b}-band]\n'
                      f'mean = {sub["dlam_dV_pm_per_V"].mean():+.1f} pm/V',
