@@ -106,7 +106,7 @@ def investigate_05_31():
         ax_top.axvline(L0[p], color='gray', alpha=0.3, lw=0.5)
     for lam in deep_in_window:
         ax_top.axvline(lam, color='red', alpha=0.85, lw=1.2)
-    ax_top.set_xlabel('λ (nm)'); ax_top.set_ylabel('IL (dB)')
+    ax_top.set_xlabel('λ (nm)'); ax_top.set_ylabel('Measured Transmission (dB)')
     ax_top.set_title(f'#1  Raw spectrum @ V={biases[0]:+.1f}V  —  '
                      f'green=ER window, red=deep nulls in window   '
                      f'[FSR ≈ {fsr:.3f} nm]')
