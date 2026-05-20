@@ -54,12 +54,22 @@ def investigate_05_31():
     biases = sorted(sweeps.keys())
     rev_biases = [v for v in biases if v <= 0.0]
 
+    # ER 윈도우 (의미 있는 관심 영역)
+    from extract_er import ER_WINDOW_NM
+    win_lo, win_hi = ER_WINDOW_NM[die['band']]
+
     # 패널 1: raw spectrum + 검출된 null
     L0, I0 = sweeps[biases[0]]
     distance = max(1, int(1.0 / (L0[1] - L0[0])))
     peaks, _ = find_peaks(-I0, prominence=10, distance=distance)
     deep_idx = [int(p) for p in peaks if I0[p] < -25]
     deep_lams = sorted([float(L0[p]) for p in deep_idx])
+
+    # ER 윈도우 안의 null 만 (의미 있음)
+    deep_in_window = [d for d in deep_lams if win_lo <= d <= win_hi]
+    if not deep_in_window:
+        # 윈도우 안에 없으면 가까운 1개라도 사용
+        deep_in_window = [min(deep_lams, key=lambda x: abs(x - (win_lo + win_hi) / 2))]
 
     # 비교용: 정상 측정 (06-03) 의 dλ/dV 도 같이 보여주기 위해 첫 정상 다이도 로드
     normal_target = None
@@ -81,43 +91,60 @@ def investigate_05_31():
     else:
         fsr = float('nan')
 
-    # ── Figure 구성: 위 1개(raw spectrum), 아래는 null 별 분리 ──
-    n_nulls_show = min(len(deep_lams), 4)
-    if n_nulls_show == 0:
-        n_nulls_show = 1
+    # ── Figure 구성: 위 1개(raw spectrum), 아래는 ER 윈도우 안 null 별 분리 ──
+    n_nulls_show = min(len(deep_in_window), 3) or 1
     fig = plt.figure(figsize=(14, 9), dpi=120)
     gs = fig.add_gridspec(2, n_nulls_show, height_ratios=[1, 1.2])
 
-    # ── 상단: raw spectrum (가로 전체) ──
+    # ── 상단: raw spectrum + ER 윈도우 강조 ──
     ax_top = fig.add_subplot(gs[0, :])
     ax_top.plot(L0, I0, lw=0.7, color='steelblue', label=f'V={biases[0]:+.1f}V')
+    # ER 윈도우 (의미 있는 영역) 음영
+    ax_top.axvspan(win_lo, win_hi, color='lightgreen', alpha=0.15,
+                   label=f'ER window [{win_lo:.0f}-{win_hi:.0f}] nm')
     for p in peaks:
         ax_top.axvline(L0[p], color='gray', alpha=0.3, lw=0.5)
-    for p in deep_idx:
-        ax_top.axvline(L0[p], color='red', alpha=0.7, lw=1.0)
+    for lam in deep_in_window:
+        ax_top.axvline(lam, color='red', alpha=0.85, lw=1.2)
     ax_top.set_xlabel('λ (nm)'); ax_top.set_ylabel('IL (dB)')
     ax_top.set_title(f'#1  Raw spectrum @ V={biases[0]:+.1f}V  —  '
-                     f'detected nulls (red = "deep", I<-25 dB)   '
+                     f'green=ER window, red=deep nulls in window   '
                      f'[FSR ≈ {fsr:.3f} nm]')
     ax_top.legend(); ax_top.grid(alpha=0.3)
 
-    # ── 하단: null 별 개별 패널 (Δλ 로 표시, 정상 ref overlay) ──
-    # 모든 바이어스 포함 (forward 도) 해서 거동 전체 보기
+    # ── 하단: ER 윈도우 안의 null 별 개별 패널 ──
+    # V=0V 를 baseline 으로 잡음 (사용자 직관에 맞게)
+    # 모든 바이어스 포함해서 양쪽 거동 다 보임
     half = min(0.4, fsr * 0.35) if not np.isnan(fsr) else 0.4
     all_biases = sorted(sweeps.keys())   # forward 포함
 
+    def _track_null_v0_baseline(sweeps_dict, all_b, lam_anchor):
+        """V=0 baseline 으로 null 위치 추적.
+
+        lam_anchor: 추적할 null 의 대략 위치 (V=-2V 의 위치)
+        먼저 V=0 의 정확한 null 위치를 찾고, 그걸 baseline 으로 모든 V 추적.
+        """
+        # V=0 (없으면 가장 가까운 것) 의 null 위치를 baseline 으로
+        v0 = 0.0 if 0.0 in sweeps_dict else min(sweeps_dict.keys(), key=lambda v: abs(v))
+        L0, I0 = sweeps_dict[v0]
+        lam0_at_v0 = _parabolic_null(L0, I0, lam_anchor, half)
+        if np.isnan(lam0_at_v0):
+            lam0_at_v0 = lam_anchor
+        positions = np.array([_parabolic_null(*sweeps_dict[v], lam0_at_v0, half)
+                              for v in all_b])
+        return positions, lam0_at_v0
+
     for i in range(n_nulls_show):
         ax = fig.add_subplot(gs[1, i])
-        if i >= len(deep_lams):
+        if i >= len(deep_in_window):
             ax.axis('off'); continue
-        lam0 = deep_lams[i]
+        lam_anchor = deep_in_window[i]
 
-        # 망가진 측정 (모든 바이어스)
-        positions = np.array([_parabolic_null(*sweeps[v], lam0, half)
-                              for v in all_biases])
+        # 망가진 측정
+        positions, lam0_v0 = _track_null_v0_baseline(sweeps, all_biases, lam_anchor)
         valid = ~np.isnan(positions)
         if valid.sum() >= 2:
-            d_lam_pm = (positions - lam0) * 1000
+            d_lam_pm = (positions - lam0_v0) * 1000
             vb = np.array(all_biases)
             ax.plot(vb[valid], d_lam_pm[valid], 'o-', color='crimson',
                     ms=6, lw=1.5, label='2019-05-31 (broken)')
@@ -126,19 +153,18 @@ def investigate_05_31():
             both = valid & rev_only
             if both.sum() >= 2:
                 s, _ = np.polyfit(vb[both], positions[both], 1)
-                ax.text(0.04, 0.95, f'slope = {s*1000:+.2f} pm/V',
+                ax.text(0.04, 0.95, f'slope (rev) = {s*1000:+.2f} pm/V',
                         transform=ax.transAxes, va='top',
                         color='crimson', fontsize=9, fontweight='bold')
 
-        # 정상 측정 (모든 바이어스 포함)
+        # 정상 측정
         if normal_target is not None:
             n_sweeps = normal_target['sweeps']
             n_all = sorted(n_sweeps.keys())
-            n_positions = np.array([_parabolic_null(*n_sweeps[v], lam0, half)
-                                    for v in n_all])
+            n_positions, lam0_n_v0 = _track_null_v0_baseline(n_sweeps, n_all, lam_anchor)
             n_valid = ~np.isnan(n_positions)
             if n_valid.sum() >= 2:
-                d_pm = (n_positions - lam0) * 1000
+                d_pm = (n_positions - lam0_n_v0) * 1000
                 ax.plot(np.array(n_all)[n_valid], d_pm[n_valid], 's--',
                         color='steelblue', ms=5, lw=1.2, alpha=0.85,
                         label='2019-06-03 (normal)')
@@ -147,18 +173,25 @@ def investigate_05_31():
                 if both.sum() >= 2:
                     s2, _ = np.polyfit(np.array(n_all)[both],
                                        n_positions[both], 1)
-                    ax.text(0.04, 0.85, f'slope = {s2*1000:+.2f} pm/V',
+                    ax.text(0.04, 0.85, f'slope (rev) = {s2*1000:+.2f} pm/V',
                             transform=ax.transAxes, va='top',
                             color='steelblue', fontsize=9, fontweight='bold')
 
         ax.axhline(0, color='gray', lw=0.6, ls=':')
-        ax.axvline(0, color='gray', lw=0.6, ls=':',
-                   label='V=0' if i == 0 else None)
-        ax.set_xlabel('V_bias (V)'); ax.set_ylabel('Δλ_null (pm)')
-        ax.set_title(f'null #{i+1}  @ {lam0:.2f} nm', fontsize=10)
+        ax.axvline(0, color='gray', lw=0.6, ls=':')
+        # 영역 음영: reverse / forward 구분
+        ax.axvspan(min(all_biases) - 0.1, 0, color='crimson', alpha=0.04)
+        ax.axvspan(0, max(all_biases) + 0.1, color='steelblue', alpha=0.04)
+        ax.text(0.01, 0.03, 'reverse', transform=ax.transAxes, fontsize=8,
+                color='crimson', alpha=0.7)
+        ax.text(0.99, 0.03, 'forward', transform=ax.transAxes, fontsize=8,
+                color='steelblue', alpha=0.7, ha='right')
+        ax.set_xlabel('V_bias (V)'); ax.set_ylabel('Δλ_null vs V=0 (pm)')
+        ax.set_title(f'null #{i+1}  @ {lam_anchor:.2f} nm  (in ER window)',
+                     fontsize=10)
         ax.grid(alpha=0.3)
         if i == 0:
-            ax.legend(fontsize=8, loc='lower left')
+            ax.legend(fontsize=8, loc='best')
 
     fig.suptitle('Null tracking across bias — broken (red) vs normal (blue)',
                  fontsize=12, fontweight='bold', y=0.99)
