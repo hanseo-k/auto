@@ -32,7 +32,7 @@ from concurrent.futures import ProcessPoolExecutor
 from xml_loader import find_all_xmls, load_die
 from extract_er import extract_er
 from extract_il import extract_il
-from extract_vpi import extract_vpi
+from extract_vpi import extract_vpi, linearity_grade
 from extract_passive_params import extract_passive_params
 from outlier_detect import mark_outliers
 from csv_export import make_run_dir, export_csv
@@ -67,7 +67,9 @@ def process_die(xml_path):
         'Vpi_V':    vpi_info['vpi_V'],
         'FSR_nm':           vpi_info['fsr_nm'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
-        'linearity_R2':     vpi_info['linearity_R2'],
+        'R2_dlam_vs_V':     vpi_info['linearity_R2'],
+        'quality_grade':    linearity_grade(vpi_info['linearity_R2'],
+                                            vpi_info['vpi_status']),
         'vpi_status':       vpi_info['vpi_status'],
         # ── Splitter 영역 ─────────────────────────────────────────
         'amplitude_ratio_k': passive['amplitude_ratio_k'],

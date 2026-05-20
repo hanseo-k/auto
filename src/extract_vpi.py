@@ -166,7 +166,7 @@ def _result(fsr=None, dlam_dV_pm=None, vpi=None, r2=None, status='ok'):
 
 
 def status_to_reason(status, dlam_dV_pm=None):
-    """vpi_status → 사람 친화적 reason 문자열."""
+    """vpi_status -> human-readable reason string."""
     if status == 'ok':
         return ''
     msg = STATUS_MESSAGE.get(status, f'unknown status: {status}')
@@ -174,3 +174,36 @@ def status_to_reason(status, dlam_dV_pm=None):
         return msg.format(thr=MIN_SLOPE_PM_PER_V,
                           dl=abs(dlam_dV_pm) if dlam_dV_pm is not None else float('nan'))
     return msg
+
+
+# Linearity quality grade thresholds
+LINEARITY_GRADE_THRESHOLDS = [
+    ('A', 0.99),   # excellent linear behavior, clean depletion mode
+    ('B', 0.95),   # normal operation, some measurement noise
+    ('C', 0.90),   # marginal linearity, V_pi reliability reduced
+    ('D', 0.50),   # poor linearity, V_pi value should be treated with caution
+]
+
+
+def linearity_grade(r2, vpi_status='ok'):
+    """Convert linearity R^2 and vpi_status into a quality grade letter.
+
+    Grades:
+        A : R^2 >= 0.99   excellent linearity
+        B : R^2 >= 0.95   normal
+        C : R^2 >= 0.90   marginal
+        D : R^2 >= 0.50   poor
+        F : R^2 <  0.50 or extraction failed (vpi_status != 'ok')
+    """
+    if vpi_status != 'ok' or r2 is None:
+        return 'F'
+    try:
+        r = float(r2)
+    except (TypeError, ValueError):
+        return 'F'
+    if np.isnan(r):
+        return 'F'
+    for grade, threshold in LINEARITY_GRADE_THRESHOLDS:
+        if r >= threshold:
+            return grade
+    return 'F'

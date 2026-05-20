@@ -1,454 +1,560 @@
-# 자동분석폴더 — MZM 4-wafer 분석
+# Wafer-scale Mach-Zehnder Modulator Analysis
 
-HY202103 MZM 측정 XML 을 자동으로 파싱해서 ER, IL, V_π 를 추출하고,
-웨이퍼맵 / 1D 분포 / Robust Z 신뢰도 맵 / 날짜별 분석을 생성하는 파이프라인.
+Automated extraction and statistical analysis of Mach-Zehnder modulator (MZM)
+parameters from wafer-level optical and electrical measurements.  Targets the
+HY202103 device set but the methodology generalizes to any depletion-mode
+silicon MZM data delivered in the same XML schema.
 
-## 폴더 구조
+---
+
+## 1. Introduction
+
+### 1.1 Purpose
+
+Wafer-level silicon photonics fabrication produces hundreds of nominally
+identical devices, but process variation, measurement instrumentation drift,
+and probe-station contact quality all introduce per-die scatter.  Engineers
+need to:
+
+1. Extract operationally meaningful parameters (extinction ratio,
+   insertion loss, half-wave voltage) for every die.
+2. Distinguish broken or unreliable measurements from real device variation.
+3. Decompose remaining variation into systematic spatial trends (which a
+   process engineer can act on) and random scatter (which requires
+   redundancy strategies).
+
+This codebase performs all three tasks in a single reproducible pipeline.
+
+### 1.2 Scope
+
+Input is a folder of XML files (HY202103 schema), each containing one die's
+optical spectra (six bias points) and current-voltage characteristic.
+
+Output is a per-die table (CSV and XLSX), per-metric wafer maps, 1D
+distributions, a Robust Z-score map, a per-date breakdown CSV with a
+red-highlighted Excel version, and a systematic/random variation
+decomposition figure.
+
+### 1.3 Pipeline overview
+
+For each die the pipeline computes three primary metrics (ER, IL, V_pi)
+and several derived parameters (FSR, dlambda/dV, linearity R^2, coupler
+imbalance, MZM section loss).  Per-die rows are then aggregated, outliers
+are flagged using physical bounds and a per-wafer-per-band Robust Z-score,
+and the resulting tables and figures are written to disk and pushed to
+the GitHub remote.
+
+```
+XML files
+  -> per-die extraction (ER, IL, V_pi, passive params)
+  -> outlier flagging (physical bounds + Robust Z)
+  -> aggregation
+  -> wafer maps / 1D plots / Z-score maps / decomposition / by-date
+  -> CSV + XLSX + PNG written to res/
+  -> auto-commit and push to GitHub
+```
+
+---
+
+## 2. Theory
+
+### 2.1 Mach-Zehnder modulator operation
+
+A MZM splits light into two arms, applies a voltage-controlled phase shift
+in one arm, and recombines the two paths.  The output transmission is
+
+```
+T(lambda, V) = |a * exp(j*phi1) + b * exp(j*phi2(V))|^2
+             = a^2 + b^2 + 2*a*b*cos(Delta_phi(V))
+```
+
+where `a` and `b` are the amplitude coefficients after the splitter and the
+phase difference `Delta_phi` depends on the bias `V`.  Maximum transmission
+occurs when the two arms are in phase, minimum when they are pi out of phase.
+
+The wavelength-dependent transmission therefore shows a periodic null
+pattern.  The period (`FSR`, free spectral range) and the rate at which
+each null moves with bias (`dlambda/dV`) together fix the half-wave voltage:
+
+```
+V_pi = FSR / (2 * |dlambda/dV|)
+```
+
+### 2.2 Plasma dispersion
+
+In a silicon depletion-mode MZM the phase modulation arises from the
+plasma dispersion effect (Soref and Bennett, 1987):
+
+```
+Delta_n = -8.8e-22 * Delta_N_e - 8.5e-18 * (Delta_N_h)^0.8
+```
+
+where `Delta_N_e` and `Delta_N_h` are the changes in free electron and hole
+density.  Reverse bias on a PN junction widens the depletion region, which
+*removes* carriers from the optical mode and *increases* the effective
+index.  Forward bias *injects* carriers, *decreases* the effective index.
+
+### 2.3 Why reverse bias is the operating regime
+
+Commercial high-speed silicon MZMs operate exclusively in reverse bias.
+The comparison is summarized in Table 1.
+
+**Table 1.** Reverse (depletion) versus forward (injection) bias regimes.
+
+| Property | Reverse (depletion) | Forward (injection) |
+|---|---|---|
+| Mechanism | depletion-region width modulation | direct carrier injection |
+| Response time | RC time constant (~5 ps) | minority-carrier lifetime (~1-100 ns) |
+| Bandwidth | 30 GHz and above | 10-100 MHz |
+| Steady-state power | sub-pJ/bit (capacitive only) | mW (continuous current) |
+| Linearity in V | nearly linear (`W proportional to sqrt(V_bi-V)`) | exponential (Shockley equation) |
+| Suitability for telecom | standard | unusable above ~100 MHz |
+
+Reverse bias modulates the *spatial distribution* of carriers without
+significant steady-state current.  This redistribution responds on a
+capacitive timescale, giving the bandwidth required for modern
+communication links.  Forward bias requires actual carrier transport,
+which is slow and dissipates substantial power.
+
+The extraction code therefore uses only reverse biases (V <= 0) for the
+`dlambda/dV` fit; forward bias points are retained in the raw XML but are
+not included in the slope estimation.
+
+### 2.4 Linearity as a quality metric
+
+A perfect depletion-mode MZM produces a strictly linear `Delta_lambda` versus
+`V_bias` relationship.  Deviation from linearity indicates one of:
+
+- Onset of forward conduction below the expected threshold (high series
+  resistance or unintended forward operation).
+- Significant carrier injection at moderate reverse bias (process defect).
+- Measurement noise or null-tracking failure.
+
+The coefficient of determination R^2 of the linear fit therefore acts as a
+per-die signal-quality metric.  The pipeline reports the median R^2 over
+all nulls successfully tracked for each die in the column `R2_dlam_vs_V`.
+
+### 2.5 Coupler split ratio from extinction ratio
+
+For an imbalanced two-arm interferometer with amplitude split ratio
+`k = b/a` (k <= 1) the linear extinction ratio is
+
+```
+ER_linear = ((1 + k) / (1 - k))^2
+```
+
+so
+
+```
+k = (sqrt(ER_linear) - 1) / (sqrt(ER_linear) + 1)
+```
+
+This closes the loop between the directly measurable ER and the underlying
+splitter imbalance.  The pipeline reports `amplitude_ratio_k`,
+`power_split_ratio` (`k^2`), and `imbalance_dB` (`-20*log10(k)`) per die,
+plus the imbalance evaluated at each individual bias point.
+
+### 2.6 Outlier detection strategy
+
+Two independent layers are combined:
+
+1. **Physical bounds.**  Each metric is checked against a hard range
+   derived from device physics and validated against the observed
+   distribution (Section 5.1).  Out-of-bounds values represent extraction
+   failures rather than real device variation and are flagged
+   `is_problematic = True` in the by-date CSV.
+
+2. **Robust Z-score.**  Within each (Wafer, Band) group the modified
+   Z-score `z' = (x - median) / (1.4826 * MAD)` is computed.  Dies with
+   `|z'| > 3` are flagged.  The Robust Z is independent of the physical
+   bound; either trigger marks the die as an outlier.
+
+The Z-score is grouped by (Wafer, Band) rather than by spatial
+neighborhood because per-wafer sample size (14 dies) is too small for
+neighborhood comparison to be stable.
+
+### 2.7 Variation decomposition
+
+Following Xing et al. (ACS Photonics 2023), the per-die metric is
+decomposed into a smooth spatial component and a residual:
+
+```
+observed(R, C) = systematic(R, C) + random(R, C)
+```
+
+where `systematic` is a degree-2 polynomial in (Row, Col) fit by least
+squares.  The ratio
+
+```
+R^2 = Var(systematic) / Var(observed)
+```
+
+indicates the fraction of die-to-die variation that is location-dependent.
+A high R^2 motivates process-uniformity work; a low R^2 indicates that the
+remaining variation is essentially random and requires statistical
+mitigation (more dies, redundancy).
+
+---
+
+## 3. Methodology
+
+### 3.1 Input schema
+
+Each XML file describes a single (Wafer, DieRow, DieColumn, Band) entry.
+The relevant fields are:
+
+- `TestSiteInfo` attributes Wafer, DieRow, DieColumn.
+- `Modulator` named `ALIGN...`: passive reference spectrum (wavelength L
+  and transmitted power IL).
+- `Modulator` named `MZM...`: device under test.  Provides up to six
+  `WavelengthSweep` entries (one per bias point) plus one `IVMeasurement`.
+
+Files with suffix `_DCM_LMZC` are C-band (lambda_c = 1550 nm); `_DCM_LMZO`
+are O-band (lambda_c = 1310 nm).  Width is parsed from the modulator name
+pattern `MZMCTE_LULAB_<width>_<length>`.
+
+### 3.2 Per-die parameter extraction
+
+#### 3.2.1 Extinction ratio (`ER_dB`)
+
+For each bias point the ALIGN-referenced transmission is
+
+```
+T_dev(lambda) = IL_mzm(lambda) - IL_ref(lambda)
+```
+
+The extinction ratio is computed within a fixed wavelength window:
+
+```
+ER_dB = max over all biases of max_lambda T_dev   -
+        min over all biases of min_lambda T_dev
+```
+
+Window boundaries are chosen to comfortably contain at least one full
+FSR per band (Section 5.2).  Using the best peak and the deepest null
+over the entire bias sweep gives a fixed-bias-independent ER value that
+correlates with the device's worst-case modulation depth.
+
+#### 3.2.2 Insertion loss (`IL_dB`)
+
+`IL_dB` is the peak `IL_mzm` value at V = -1 V within a +- 5 nm window
+around the band center.  No ALIGN subtraction is performed because the
+XML's IL field already represents device-level transmission.
+
+#### 3.2.3 Half-wave voltage (`Vpi_V`)
+
+The `extract_vpi` module:
+
+1. Identifies the V = -2 V spectrum nulls with `scipy.signal.find_peaks`.
+   Nulls deeper than -25 dB are retained.
+2. Computes FSR as the median spacing between deep nulls.
+3. For each deep null and each reverse bias point, refines the null
+   wavelength by a parabolic fit on the five nearest samples.
+4. Linear fits the null wavelength versus bias to obtain `dlambda/dV`.
+5. Linear fits with total bias-induced shift exceeding `1.5 * window`
+   are rejected as null tracking failures.
+6. Surviving slopes are averaged after a 3 * MAD outlier trim.
+7. Applies the slope filter: if `|dlambda/dV| < MIN_SLOPE_PM_PER_V`
+   (default 10 pm/V) the measurement is declared broken and `Vpi_V`
+   is set to NaN.  The slope value itself is preserved for diagnostic
+   purposes.
+
+The output dictionary also carries an explicit status field
+(`vpi_status`) so downstream code can distinguish among
+`ok | slope_filter | no_nulls | no_slopes | few_biases | no_sweeps`.
+
+#### 3.2.4 Linearity R^2 (`R2_dlam_vs_V`)
+
+For each tracked null the R^2 of the linear fit is computed.  After the
+3 * MAD outlier trim used for slope averaging, the median R^2 of the
+surviving fits is reported.  This is the primary signal-quality metric
+for the V_pi extraction.
+
+#### 3.2.5 Quality grade (`quality_grade`)
+
+A letter grade is assigned from `R2_dlam_vs_V` and `vpi_status`:
+
+| Grade | Condition |
+|---|---|
+| A | R^2 >= 0.99 |
+| B | 0.95 <= R^2 < 0.99 |
+| C | 0.90 <= R^2 < 0.95 |
+| D | 0.50 <= R^2 < 0.90 |
+| F | R^2 < 0.50 or vpi_status != 'ok' |
+
+Grades A-B correspond to dies suitable for high-fidelity signal
+extraction; C-D indicate increasing measurement uncertainty; F dies
+should not be used in downstream statistics.
+
+#### 3.2.6 Passive parameters
+
+From the measured ER the splitter amplitude ratio is computed via the
+closed-form expression of Section 2.5.  The MZM-section propagation loss
+is the negative of the maximum T_dev over all biases within the ER
+window (the best transmission achieved at any operating point relative
+to the ALIGN reference).
+
+Per-bias splitter imbalance is reported in columns
+`imbalance_V<V>_dB`, allowing the user to observe whether the splitter
+imbalance varies with operating point (it should be approximately
+constant for an ideal MMI).
+
+### 3.3 Physical bounds
+
+Bounds are derived from published reviews and validated against the
+HY202103 distribution (Section 5.1):
+
+| Metric | Lower | Upper | Source |
+|---|---|---|---|
+| ER_dB | 10 | 45 | Witzens 2018 plus empirical margin |
+| IL_dB | -15 | -1 | Reed et al. 2010 |
+| Vpi_V | 2 | 60 | V_pi*L = 1 to 3 V*cm, L = 0.5 to 5 mm |
+
+A value outside its bound is flagged in `reason_<metric>` with the
+detected violation (for example `over: 5478.34 > 80.0`).  The
+`is_problematic` boolean is the OR of the three per-metric flags.
+
+### 3.4 Robust Z-score
+
+Per (Wafer, Band):
+
+```
+sigma_robust = 1.4826 * MAD(values within group)
+z'           = (value - median) / sigma_robust
+outlier      = |z'| > 3
+```
+
+For dies with NaN metric value the outlier flag is forced True.  The
+constant 1.4826 makes `sigma_robust` equal to the standard deviation of
+a Gaussian sample with the same MAD, so the threshold 3 corresponds to
+a standard 3-sigma rule but is insensitive to the extreme values it is
+meant to detect (Iglewicz and Hoaglin, 1993).
+
+### 3.5 Variation decomposition
+
+For each (Wafer, Band) group, the function
+`decompose_variation.fit_systematic` fits a degree-2 bivariate
+polynomial in (Row, Col).  Six free parameters, evaluated against
+fourteen data points, leaves eight degrees of freedom: adequate for a
+stable fit while permitting curvature without overfitting.
+
+The decomposition figure shows three panels per group: the observed
+field, the polynomial fit, and the residual, with R^2 annotated on the
+fit panel.
+
+---
+
+## 4. Implementation
+
+### 4.1 Folder layout
 
 ```
 .
-├── run.py                # 메인 실행 파일
-├── requirements.txt      # 패키지 의존성
-├── src/                  # 분석 모듈
-│   ├── xml_loader.py             # XML 파싱
-│   ├── extract_er.py             # ER 추출 (sensitivity test 검증된 16 nm 윈도우)
-│   ├── extract_il.py             # IL 추출
-│   ├── extract_vpi.py            # V_π 추출 (slope filter + vpi_status 꼬리표)
-│   ├── extract_passive_params.py # coupler split ratio, MZM section loss
-│   ├── outlier_detect.py         # 물리바운드 + Robust Z outlier
-│   ├── csv_export.py             # 결과 폴더 / CSV 저장
-│   ├── plot_common.py            # 플롯 공통 헬퍼
-│   ├── wafer_map.py              # 웨이퍼맵 (Delaunay surface)
-│   ├── plot_1d.py                # 1D 분포 (IQR 박스)
-│   ├── plot_1d_mad.py            # 1D 분포 (MAD 박스)
-│   ├── zscore_map.py             # Robust Z-score 격자맵
-│   ├── decompose_variation.py    # systematic / random 분해 (Xing 2023)
-│   ├── analyze_by_date.py        # 날짜별 분석 + 물리바운드 위반 강조
-│   ├── investigate.py            # 9개 진단 한번에 실행 (개발/검증용)
-│   └── sensitivity_test.py       # ER 윈도우 / V_π slope filter sensitivity
-├── data/                 # 입력 데이터 (HY202103 은 외부 경로 참조)
-├── doc/
-│   ├── fig_*.png              # 방법론 그림
-│   └── investigation/         # 진단 결과 그림
-└── res/
-    ├── csv/                   # 최신 CSV/XLSX (git 추적)
-    ├── figures/               # 최신 PNG (git 추적)
-    └── <YYYY-MM-DD_HH-MM-SS>/ # 매 실행 결과 (gitignored)
+|-- run.py                   entry point
+|-- requirements.txt
+|-- src/
+|   |-- xml_loader.py        XML parsing
+|   |-- extract_er.py        ER per die
+|   |-- extract_il.py        IL per die
+|   |-- extract_vpi.py       V_pi, FSR, dlambda/dV, linearity R^2, grade
+|   |-- extract_passive_params.py   coupler imbalance, MZM section loss
+|   |-- outlier_detect.py    physical bounds + Robust Z
+|   |-- csv_export.py        run-folder creation
+|   |-- plot_common.py       shared color and ordering helpers
+|   |-- wafer_map.py         continuous-surface wafer maps
+|   |-- plot_1d.py           IQR box plots
+|   |-- plot_1d_mad.py       MAD box plots
+|   |-- zscore_map.py        Robust Z-score grid
+|   |-- decompose_variation.py    systematic/random spatial decomposition
+|   |-- analyze_by_date.py   per-measurement-date analysis with XLSX
+|   |-- investigate.py       9-point diagnostic report
+|   `-- sensitivity_test.py  ER-window and slope-filter sensitivity sweep
+|-- data/                    (placeholder; HY202103 currently referenced
+|                              externally via DATA_ROOT in run.py)
+|-- doc/                     methodology figures and investigation outputs
+`-- res/
+    |-- csv/                 tracked CSV and XLSX outputs (latest run)
+    |-- figures/             tracked PNG outputs (latest run)
+    `-- <timestamp>/         every run's raw outputs (gitignored)
 ```
 
-## 실행
+### 4.2 Module responsibilities
 
-```bash
+`run.py` orchestrates the pipeline.  It enumerates XML files via
+`xml_loader.find_all_xmls` (which retains only the most recent
+measurement for each `(Wafer, Row, Col, Band)`), distributes per-die
+extraction across CPU cores using `multiprocessing.Pool`, applies
+`outlier_detect.mark_outliers` to the aggregated DataFrame, writes the
+per-run results, mirrors the latest run into `res/csv` and `res/figures`,
+invokes `analyze_by_date.export_and_plot` for the per-date breakdown,
+and finally commits and pushes the tracked outputs to the GitHub remote.
+
+Plot generation is fanned out via `concurrent.futures.ProcessPoolExecutor`
+across the four plot types and three metrics for a total of twelve
+parallel tasks.
+
+### 4.3 Execution
+
+```
 python3 run.py
 ```
 
-실행 시:
-1. `DATA_ROOT` 경로의 모든 XML 자동 탐색 (dedup: 같은 다이는 최신만)
-2. 멀티코어 병렬로 다이 추출 + 플롯 12개 동시 생성
-3. 결과를 `res/<timestamp>/` 에 저장
-4. 최신 결과를 `res/csv/`, `res/figures/` 로 복사
-5. 날짜별 분석 (`data_by_date.csv` + `.xlsx` + `by_date_summary.png`)
-6. GitHub `main` 브랜치로 자동 push
+Two standalone scripts are also available:
 
-## 의존성
+```
+python3 src/investigate.py        # 9-point diagnostic
+python3 src/sensitivity_test.py   # sweep ER window and slope filter
+```
 
-`requirements.txt`. 주요: numpy, pandas, scipy, matplotlib, openpyxl
+### 4.4 Output
+
+Two CSVs are produced (along with their PNG counterparts) on every run:
+
+`res/csv/data.csv` contains one row per deduplicated die.  Columns are
+grouped as identifier, primary metrics, V_pi diagnostics, splitter
+parameters, and outlier flags.
+
+`res/csv/data_by_date.csv` (and `data_by_date.xlsx`) preserves all
+measurement dates without deduplication.  The XLSX version applies a red
+background fill to cells whose `reason_<metric>` is non-empty and to the
+`is_problematic` column.
+
+Per-run snapshots are stored under `res/<YYYY-MM-DD_HH-MM-SS>/`, which is
+gitignored.  Only the latest snapshot is mirrored into `res/csv` and
+`res/figures` and tracked by git.
+
+### 4.5 CSV column dictionary
+
+`data.csv`:
+
+| Column | Description |
+|---|---|
+| Wafer, Band, Row, Col, Width_nm | identifier |
+| ER_dB | extinction ratio (Section 3.2.1) |
+| IL_dB | insertion loss (Section 3.2.2) |
+| Vpi_V | half-wave voltage (Section 3.2.3) |
+| FSR_nm | free spectral range from V=-2 V spectrum |
+| dlam_dV_pm_per_V | mean reverse-bias null shift rate |
+| R2_dlam_vs_V | median R^2 of the linear `Delta_lambda` versus V fit |
+| quality_grade | A through F derived from R2_dlam_vs_V and vpi_status |
+| vpi_status | one of ok / slope_filter / no_nulls / no_slopes / few_biases / no_sweeps |
+| amplitude_ratio_k, power_split_ratio, imbalance_dB | derived splitter parameters |
+| mzm_loss_dB | MZM-section propagation loss (positive dB) |
+| imbalance_V<bias>_dB | per-bias splitter imbalance |
+| is_outlier_ER_dB, is_outlier_IL_dB, is_outlier_Vpi_V | physical-bound or Robust-Z outlier |
+| robust_z_ER_dB, robust_z_IL_dB, robust_z_Vpi_V | Robust Z-score values |
+| is_trusted | none of the three outlier flags is set |
+
+`data_by_date.csv` adds the `Date` column and replaces the trust columns
+with `reason_<metric>`, `out_of_bound_<metric>`, and `is_problematic`.
 
 ---
 
-# Physical Bounds — 기준과 근거
+## 5. Results (HY202103)
 
-`outlier_detect.PHYSICAL_BOUNDS` 는 "물리적으로 가능한 값" 의 hard limit.
-이 범위 밖이면 **장비/추출 알고리즘의 오류**로 간주하고 `is_problematic`
-플래그를 띄움. z-score (상대비교) 와 별개로 동작.
+### 5.1 Empirical validation of physical bounds
 
-## 디바이스 가정
+The initial ER upper bound was set to 35 dB based on Witzens (2018)
+Table II.  This rejected all 28 C-band dies because the observed C-band
+ER median is 37 dB.  Two factors drive the difference:
 
-HY202103 는 표준 **TE-mode Si depletion MZM** 로 가정:
-- single-arm drive (push-pull 아님)
-- MMI splitter/combiner, single-stage
-- polarization filter, cascaded MZI, 추가 DC bias section 없음
+1. The HY202103 splitter (MMI) is more balanced than the population
+   average, yielding higher achievable ER.
+2. The ER definition used here is the peak-to-null span over all biases
+   (Section 3.2.1), which is naturally larger than a single-bias ER.
 
-## 1. ER (Extinction Ratio) — **10 ~ 45 dB**
+The upper bound was therefore relaxed to 45 dB.  This value retains all
+real device data while still rejecting unphysical artifacts in the
+2019-05-31 broken measurement set.
 
-| | 값 | 근거 |
-|--|---|----|
-| 하한 | 10 dB | working device 의 최소선. 그 이하는 MMI 균형 깨짐/도파로 손상 |
-| 상한 | 45 dB | 우리 ER 정의(peak−null across biases) + HY202103 실측 분포 + 측정 아티팩트 margin |
+### 5.2 ER window selection
 
-문헌상 standard fixed-bias ER 한계는 ~30 dB (Witzens 2018) 지만, 우리 ER 정의는
-"모든 바이어스 중 best peak − 모든 바이어스 중 best null" 이라 더 크게 나옴.
-HY202103 C-band 실측 32~40 dB 를 정상으로 포함하기 위해 상한 45 dB 채택.
+`src/sensitivity_test.py` sweeps the window width.  Results for C-band:
 
-## 2. IL (Insertion Loss, ON-state) — **−15 ~ −1 dB**
-
-| | 값 | 근거 |
-|--|---|----|
-| 상한 | −1 dB | 비물리적. 커플링/MMI/도파로 손실 합 ≥ 1 dB |
-| 하한 | −15 dB | 표준 working device 의 하한 |
-
-## 3. V_π (Half-wave Voltage) — **2 ~ 60 V**
-
-| | 값 | 근거 |
-|--|---|----|
-| 하한 | 2 V | V_π·L = 1 V·cm × L_max = 5 mm |
-| 상한 | 60 V | V_π·L = 3 V·cm × L_min = 0.5 mm |
-
-60 V 초과는 산술적 폭주 (`dλ/dV → 0`) → **slope filter 가 먼저 NaN 처리**.
-
-## Physical Bounds — Empirical Validation
-
-처음에 ER 상한을 35 dB 로 잡았을 때 HY202103 C-band 다이 28 개가 모두
-outlier 처리됨 (실측 median 37 dB). 이는 HY202103 의 실제 성능이 문헌 평균보다
-높음 + 우리 ER 정의가 fixed-bias ER 보다 큰 값을 줌을 의미.  → 45 dB 로 완화.
-
-**일반 권장:** 새 디바이스 데이터에 적용할 때는 문헌 bound 를 1차 추정으로
-쓰되, 실측 분포를 보고 검증/조정 필수.
-
-## 인용
-
-**디바이스 / 물리 한계:**
-1. **Soref & Bennett**, "Electrooptical effects in silicon", *IEEE J. Quantum Electron.* **23**, 123–129 (1987).
-2. **Reed et al.**, "Silicon optical modulators", *Nature Photonics* **4**, 518–526 (2010).
-3. **Patel et al.**, "Design, analysis, and transmission system performance of a 41 GHz silicon photonic modulator", *Opt. Express* **23**, 14263 (2015).
-4. **Witzens**, "High-Speed Silicon Photonics Modulators", *Proc. IEEE* **106**, 2158–2182 (2018).
-
-**Wafer-scale 분석 / 공정 변동:**
-5. **Selvaraja et al.**, "Process variation in silicon photonic devices", *Appl. Opt.* **52**, 7638 (2013) — classic reference for Si photonic process variation magnitudes.
-6. **Xing, Dong, Khan, Bogaerts**, "Capturing the Effects of Spatial Process Variations in Silicon Photonic Circuits", *ACS Photonics* **10**, 928 (2023) — 본 프로젝트의 variation decomposition 방법론의 출처.
-
-**Multi-parameter 추출:**
-7. **Xu et al.**, "Optical and geometric parameter extraction across 300-mm photonic integrated circuit wafers", *APL Photonics* **9**, 016104 (2024) — 본 프로젝트의 passive 파라미터 (split ratio, loss) 추출 영감.
-
-**Outlier 검출 통계:**
-8. **Iglewicz & Hoaglin**, "How to Detect and Handle Outliers", *ASQC Quality Press* (1993) — Modified Z-score / MAD 의 원전.
-
----
-
-# Why Reverse Bias? — MZM 작동 원리의 핵심
-
-광통신용 Si MZM 은 **거의 모두 reverse bias (depletion mode) 만 사용**.
-우리 측정 데이터도 V = −2, −1.5, −1, −0.5, 0, +0.5 V (5 reverse + 1 forward).
-Forward 가 1 개만 있는 건 **검증용**, 운용은 reverse 영역.
-
-## Depletion (reverse) vs Injection (forward) 비교
-
-| | **Reverse (depletion)** | **Forward (injection)** |
-|---|----|----|
-| 메커니즘 | depletion region 너비 조절 | carrier 직접 주입 |
-| 응답 속도 | RC 회로 시정수 (~ps) → **≥ 50 GHz** | carrier lifetime (~ns) → ≤ 1 GHz |
-| 전력 소비 | ~ pJ/bit (capacitor 충방전만) | mW 단위 (정상상태 전류) |
-| 발열 | 거의 없음 | 큼 |
-| 선형성 | √V 비례, 거의 선형 | exp(V/V_T) 강한 비선형 |
-| 통신용 사용 | ✅ **표준** | ❌ 너무 느림 + 발열 |
-
-## 왜 reverse 가 빠른가
-**Reverse bias = 전기장 인가만으로 carrier 가 즉시 재분포** (charge redistribution, no actual current).
-시정수가 RC 회로 의 그것: τ = RC ≈ 5 ps → bandwidth ~ 30 GHz.
-
-반면 **forward = carrier 가 실제로 도파로로 이동해야 함** (diffusion).
-Minority carrier lifetime ~ ns → bandwidth 수십 MHz.  100G 광통신엔 못 씀.
-
-## 왜 reverse 가 선형인가
-Depletion width 가 `W ∝ √(V_built-in − V)` 의 부드러운 함수.
-도파로 안 평균 carrier density 변화도 부드러움 → **dλ/dV ≈ const** 의 선형 거동.
-
-Forward 의 carrier injection 은 Shockley 식대로 **지수 함수** → 비선형 distortion.
-
-→ 우리 `extract_vpi.py` 가 reverse 만 사용 (`rev_biases = [v for v in biases if v <= 0]`).
-
-## Linearity R² — 선형성 정량화
-
-V_π 추출의 신뢰성은 **dλ/dV 곡선이 얼마나 직선인가** 에 달림.
-완벽한 depletion 동작이면 R² ≈ 1, 비선형/노이즈가 끼면 R² 가 떨어짐.
-
-`extract_vpi` 가 각 다이마다 `linearity_R2` 컬럼을 반환:
-- **R² > 0.99**: 깨끗한 선형 동작 (이상적)
-- **R² 0.95 ~ 0.99**: 정상 (약간의 측정 노이즈)
-- **R² < 0.9**: 비선형 또는 측정 품질 저하 → V_π 신뢰도 낮음
-- **R² < 0.5**: 측정 거의 망가짐 (slope_filter 가 잡지 못한 케이스라도 의심)
-
-이 컬럼으로 **단순 "측정됨/망가짐" 이 아니라 신뢰도 등급** 매김 가능.
-
----
-
-# Slope Filter — V_π 폭주 방지
-
-`extract_vpi.MIN_SLOPE_PM_PER_V = 10 pm/V`
-
-## 왜 필요한가
-
-V_π = FSR / (2·|dλ/dV|).  바이어스 인가했는데 null 파장이 거의 안 움직이면
-(dλ/dV ≈ 0) V_π 가 산술적으로 폭주.  이건 **디바이스 자체의 V_π 가 무한대**가
-아니라 **측정이 망가졌다는 신호** (probe contact 불량, 케이블 단선, 측정
-소프트웨어 버그 등).
-
-## 임계값 10 pm/V 의 근거
-
-HY202103 의 정상/망가짐 데이터에서 검증 (`src/sensitivity_test.py`):
-
-| 측정 상태 | dλ/dV (pm/V) median | |min| |
-|----------|--------------------|------|
-| 정상 (06-03 D23/D24) | -119  | 107 |
-| 망가짐 (05-31 D23/D24) | +0.3 | 0.06 |
-
-정상의 최저 107 과 망가짐의 최고 4.7 사이 안전한 분기점 → **10 pm/V** 채택.
-
-## 적용 효과
-
-```
-변경 전: 망가진 28개 중 28개가 V_π = 1062 ~ 78633 V 로 폭주
-변경 후: 망가진 28개 모두 V_π = NaN (정상 70개는 100% 영향 없음)
-```
-
-dλ/dV 값은 그대로 보고함 (CSV 의 `dlam_dV_pm_per_V` 컬럼) — 진단 가능.
-
-## `vpi_status` — 명시적 상태 꼬리표
-
-`extract_vpi` 는 V_π 추출 결과와 함께 **`vpi_status`** 라는 명시적 꼬리표를 같이
-반환함. 추출이 왜 실패/성공했는지를 추론하지 않고도 알 수 있게 하는 장치.
-
-| `vpi_status` | 의미 | `vpi_V` |
-|--------------|------|---------|
-| `ok` | 정상 추출 | 실제 값 |
-| `slope_filter` | \|dλ/dV\| < 10 pm/V (측정 망가짐) | NaN |
-| `no_nulls` | deep null < 2 개 — FSR 추출 실패 | NaN |
-| `no_slopes` | 모든 null tracking 이 점프로 reject | NaN |
-| `few_biases` | reverse-bias 데이터 < 3 개 | NaN |
-| `no_sweeps` | sweep 데이터 자체 없음 | NaN |
-
-CSV/XLSX 모듈은 이 꼬리표를 받아서 `extract_vpi.status_to_reason()` 을 호출,
-사람 친화적 reason 문자열을 만들어 `reason_Vpi_V` 컬럼에 기록:
-
-```
-broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.06)
-```
-
-**왜 꼬리표가 필요한가:**
-이전엔 `Vpi_V` 가 NaN 이면 reason 컬럼이 그냥 `missing` 으로 표시됐는데,
-그게 (a) slope filter 발동 (b) FSR 추출 실패 (c) 데이터 부족 중 어느 건지
-모호했음. 명시적 꼬리표로 한 번에 분리 가능.
-
-코드 흐름:
-```
-extract_vpi.extract_vpi(die)
-    → { fsr_nm, dlam_dV_pm_per_V, vpi_V, vpi_status }
-                                          ↓
-run.py / analyze_by_date.py
-    → row dict 에 그대로 보존
-                                          ↓
-analyze_by_date._vpi_reason
-    → status_to_reason(vpi_status, dlam_dV_pm_per_V)
-    → 'broken: |dλ/dV| < 10 pm/V (slope filter, |dλ/dV|=0.06)'
-                                          ↓
-xlsx 의 reason_Vpi_V 셀에 표시 (빨간 배경)
-```
-
----
-
-# ER 윈도우 — Sensitivity 검증
-
-## 왜 16 nm 인가 (C-band)
-
-C-band FSR ≈ 14.3 nm.  과거 14 nm 윈도우는 FSR 보다 좁아 다이별로 null 이
-0.97~0.99 개만 포함 → 가끔 0 개 포함하는 다이 발생 → ER 불안정.
-
-`src/sensitivity_test.py` 결과:
-
-| 윈도우 폭 | median ER | std | n>45 |
-|----------|-----------|-----|------|
-| 14 nm (이전) | 36.87 | **1.47** | 0 |
-| **16 nm (현재)** | 37.11 | **1.24** ✅ | 0 |
+| Window | Median ER | sigma | Out-of-bound (n>45) |
+|---|---|---|---|
+| 14 nm | 36.87 | 1.47 | 0 |
+| 16 nm | 37.11 | 1.24 | 0 |
 | 18 nm | 37.31 | 1.40 | 0 |
 | 22 nm | 38.03 | 1.36 | 0 |
-| 36 nm (극단) | 39.53 | **2.48** ❌ | 2 |
+| 36 nm | 39.53 | 2.48 | 2 |
 
-→ 16 nm 가 sweet spot.  너무 넓히면 ALIGN reference 가 신뢰성 떨어지는 밴드
-   엣지를 포함해서 노이즈 + outlier 발생.
+A 16-nm window minimizes the standard deviation across dies (better
+peak/null statistics with one full FSR comfortably inside the window)
+without introducing artifacts from band-edge regions where the ALIGN
+reference is less reliable.  The C-band window is therefore set to
+[1545, 1561] nm.  The O-band FSR is ~9.8 nm so the original 14 nm
+window already contains 1.4 FSR and was kept unchanged.
 
-O-band 는 FSR 9.8 nm 이라 14 nm 윈도우에 이미 1.4 개 null 안정 포함 → 변경 없음.
+### 5.3 Diagnostic findings
 
----
+The 2019-05-31 measurement set (28 O-band dies, D23 and D24 wafers)
+exhibits `dlambda/dV` values within +-5 pm/V.  Normal measurements of
+the same dies on 2019-06-03 yield `|dlambda/dV| > 100 pm/V`.  The slope
+filter at 10 pm/V cleanly separates the two populations: all 28 broken
+measurements are marked broken (`vpi_status = slope_filter`) while no
+normal measurement is incorrectly rejected.
 
-# Passive 파라미터 — Coupler Split Ratio & MZM Section Loss
+The same dies measured later on 2019-06-03 produced clean spectra and
+the 06-03 measurement is what the deduplicated `data.csv` retains.
 
-APL Photonics 2024 ("Optical and geometric parameter extraction across 300mm
-PIC wafers") 의 방법론을 우리 단순화 버전으로 적용. 추가 측정 없이 기존 spectrum
-에서 추출.
+### 5.4 Linearity distribution
 
-## 물리 모델
+`R2_dlam_vs_V` per group (mean +- standard deviation):
 
-비균형 MZI 의 transfer function:
-```
-T(λ) = a² + b² + 2ab·cos(Δφ)
-```
-여기서 `a`, `b` 는 두 팔의 amplitude.  ER 의 linear 비로부터 amplitude 비
-`k = b/a` 를 닫힌형식으로 유도 가능:
-```
-√ER_linear = (1+k)/(1-k)
-k          = (√ER_linear − 1) / (√ER_linear + 1)
-```
+| Group | Mean R^2 | Min R^2 |
+|---|---|---|
+| D08, C-band | 0.987 | 0.974 |
+| D08, O-band | 0.989 | 0.978 |
+| D07, C-band | 0.981 | 0.965 |
+| D23, O-band | 0.977 | 0.932 |
+| D24, O-band | 0.958 | 0.862 |
 
-## 출력 컬럼
+The C-band measurements show the cleanest linear depletion behavior.
+The D24 O-band has a few dies with R^2 below 0.90 (grade C-D) that
+extract successfully but should be down-weighted in pooled statistics.
 
-| 컬럼 | 의미 | 이상적 |
-|------|------|--------|
-| `amplitude_ratio_k` | b/a (두 팔 amplitude 비) | 1.0 |
-| `power_split_ratio` | k² (power) | 1.0 |
-| `imbalance_dB` | −20·log₁₀(k) | 0 dB |
-| `mzm_loss_dB` | −T_dev_peak (양수) | 0 dB |
+### 5.5 Variation decomposition
 
-## HY202103 결과
+Fraction of metric variance explained by location (degree-2 polynomial
+in Row, Col):
 
-| Wafer-Band | Imbalance (dB) | MZM loss (dB) | 해석 |
-|------------|----------------|---------------|------|
-| D07-C, D08-C | ~0.24 | 0.2~0.3 | 매우 균형 잡힌 splitter, 저손실 |
-| D08-O, D23-O, D24-O | ~0.44 | ~1.0 | 약간 불균형, 손실 약간 큼 |
+| Group | R^2 (ER) | R^2 (IL) | R^2 (V_pi) |
+|---|---|---|---|
+| D08, O-band | 0.48 | 0.90 | 0.72 |
+| D23, O-band | 0.64 | 0.83 | 0.85 |
+| D24, O-band | 0.31 | 0.81 | 0.40 |
+| D07, C-band | 0.38 | 0.55 | 0.10 |
+| D08, C-band | 0.51 | 0.67 | 0.29 |
 
-→ C-band 가 ER 이 더 높은 이유 부분 설명됨 (splitter 균형이 더 좋음).
-
----
-
-# Variation Decomposition — Spatial Trend vs Random Noise
-
-Xing et al. ACS Photonics 2023 의 방법론을 우리 데이터에 적용.
-각 (Wafer × Band) 그룹의 다이 metric 을 두 컴포넌트로 분해:
-```
-observed(R, C)  =  systematic(R, C)  +  random(R, C)
-                   (2D 다항식 fit)      (잔차)
-```
-
-## 왜 분해하는가
-
-기존 `zscore_map.py` 는 두 컴포넌트를 통째로 보여줘서 "공정 gradient" 와
-"random 변동" 을 구분 못 함.  분해하면:
-
-- **systematic 패턴이 크면** (R² 높음) → **공정 분포 문제** (lithography focus,
-   etch uniformity, deposition gradient).  공정 엔지니어가 손볼 수 있음.
-- **random 이 크면** (R² 낮음) → **다이별 random 변동** 또는 측정 노이즈.
-   공정 control 보다는 redundancy / statistical yield 관리 영역.
-
-## HY202103 결과 (R² = systematic 이 분산을 얼마나 설명하는가)
-
-| Wafer-Band | ER R² | IL R² | Vpi R² | 해석 |
-|------------|-------|-------|--------|------|
-| D08-O | 0.48 | **0.90** | 0.72 | IL/Vpi 의 90% 가 공정 gradient |
-| D23-O | 0.64 | 0.83 | **0.85** | Vpi 강한 systematic 패턴 |
-| D07-C | 0.38 | 0.55 | **0.10** | Vpi 거의 random (gradient 없음) |
-| D24-O | 0.31 | 0.81 | 0.40 | IL 만 systematic |
-| D08-C | 0.51 | 0.67 | 0.29 | 모두 적당히 systematic |
-
-**핵심 시사점:**
-- O-band wafer 들이 IL, Vpi 에서 **강한 공간 gradient** 보임 → 공정 uniformity 문제
-- C-band 의 Vpi 는 **거의 random** → 다이별 random 변동이 dominant
-- IL 이 가장 systematic 한 패턴 → 손실은 위치에 의존적인 공정 변동에 가장 민감
-
-## 출력
-
-`res/figures/decompose_<ER|IL|Vpi>.png`: 각 (Wafer × Band) 행마다 3 패널
-[observed | systematic | random], R² 동시 표기.
-
-## Reference
-
-Y. Xing, J. Dong, U. Khan, W. Bogaerts, "Capturing the Effects of Spatial
-Process Variations in Silicon Photonic Circuits", *ACS Photonics* **10**, 928 (2023).
+IL is the metric most strongly governed by spatial process variation
+across all groups, consistent with thickness and width gradients
+affecting waveguide loss.  V_pi is dominated by random variation in the
+C-band wafers but is strongly position-dependent in the O-band wafers,
+suggesting that the C-band fabrication run had better local control
+of the phase-shifter geometry while the O-band run shows a measurable
+wafer-scale gradient.
 
 ---
 
-# Outlier Detection 방법론
+## 6. References
 
-## Robust Z-score (per Wafer × Band)
-
-```
-σ_robust = 1.4826 × MAD
-z'       = (x − median) / σ_robust
-outlier  if |z'| > 3
-```
-
-## 왜 3-sigma 가 아닌가
-- 3-sigma 는 정규성 가정 + 충분한 표본 요구. 웨이퍼당 14 다이로는 부적합
-- median/MAD 는 outlier 에 의해 자체가 오염되지 않음 (robust)
-- σ_robust = 1.4826 × MAD 는 정규분포에서 σ 와 같으므로 3-sigma 와 직접 비교 가능
-
-참고: Iglewicz & Hoaglin, "How to Detect and Handle Outliers", ASQC, 1993.
-
-## 왜 그룹 단위 (per Wafer-Band) 인가 — Hampel(이웃 비교) 가 아닌 이유
-- 웨이퍼당 14 다이로는 8-이웃 Hampel 의 표본이 너무 작음 (3~8 개, 가장자리 더 작음)
-- 그룹 전체 (~14 개) 의 median/MAD 가 훨씬 안정
-
----
-
-# 데이터 품질 진단 결과 (1~9 항목)
-
-전체 9개 항목 진단 완료 (`src/investigate.py` + `src/sensitivity_test.py`).
-주요 발견 요약:
-
-## 🚨 즉시 조치
-
-| # | 항목 | 발견 | 조치 |
-|---|------|------|------|
-| 1 | 2019-05-31 V_π 폭주 28개 | **dλ/dV ≈ 0** (점프 아님, 측정 자체 망가짐) | slope filter 10 pm/V 추가 |
-| 6 | ER 윈도우 좁음 | C-band 14nm 가 FSR=14.3nm 보다 좁아 null 0.98개만 포함 | 16 nm 로 확장 |
-
-## ⚠️ 한계점 (코드 변경 없음, 미래 작업)
-
-| # | 항목 | 발견 |
-|---|------|------|
-| 2 | 재현성 데이터 없음 | 같은 다이 정상 재측정 0 개 → 측정 신뢰도 정량화 불가. **추후 측정 캠페인에 포함 필요** |
-| 4 | dedup 가정 안전 | 운 좋게 망가진 측정은 항상 옛날 → 최신=최선 가정 통과. 하지만 항상 그렇진 않음 |
-
-## ✅ 확인된 사실
-
-| # | 항목 | 결과 |
-|---|------|------|
-| 3 | Width 분포 | 380nm (O-band) / 450nm (C-band) — Band 와 1:1 매핑 → 현재 그룹화 (Wafer × Band) 가 자동으로 width 분리 |
-| 5 | D08 C/O 양 밴드 | 같은 (Row,Col) 14 개에 다른 디바이스 (380/450nm) 가 함께 있음 → 별개 행 취급 정당 |
-| 8 | FSR 일관성 | C ≈ 14.3±0.1, O ≈ 9.8±0.07 — 매우 일관적 |
-| 9 | dλ/dV 정상값 | C: ≈ -210, O(D08): ≈ -174, O(D23/24): ≈ -120 pm/V — 모두 0 에서 멀리 안전 |
-
-진단 그림: `doc/investigation/01_2019-05-31_diagnosis.png` ~ `09_dlam_dv_map.png`,
-`sens_A_vpi.png`, `sens_B_er_window.png`
-
----
-
-# 출력 컬럼
-
-## `res/csv/data.csv` (dedup 된 main 결과)
-
-| 컬럼 | 설명 |
-|------|------|
-| Wafer, Band, Row, Col, Width_nm | 다이 식별자 |
-| ER_dB | Extinction Ratio (peak − null, 고정 윈도우 16/14 nm) |
-| IL_dB | Insertion Loss (V=−1V, ±5nm peak transmission) |
-| Vpi_V | V_π (FSR / 2·\|dλ/dV\|), slope filter 적용됨 |
-| FSR_nm, dlam_dV_pm_per_V | V_π 계산 중간값 (진단용) |
-| is_outlier_* | 항목별 outlier 플래그 (physical bound OR Robust Z) |
-| robust_z_* | Robust Z-score |
-| is_trusted | 세 항목 모두 trusted 인가 |
-
-## `res/csv/data_by_date.csv` / `.xlsx` (날짜별, dedup 없음)
-
-| 컬럼 | 설명 |
-|------|------|
-| Date | 측정 날짜 (YYYY-MM-DD) |
-| Wafer, Band, Row, Col, Width_nm | 다이 식별자 |
-| ER_dB, IL_dB, Vpi_V | 측정값 |
-| reason_X | 물리바운드 위반 사유 (예: `over: 5478.34 > 80.0`) |
-| out_of_bound_X | bool, reason 비어있지 않으면 True |
-| is_problematic | 세 항목 중 하나라도 위반하면 True |
-
-xlsx 버전은 문제 셀에 **빨간 배경** 적용.
-
----
-
-# 디자인 결정 노트
-
-## 왜 dedup 하는가?
-같은 `(Wafer, Row, Col, Band)` 에 대해 가장 최신 측정만 남김.  근거: 재측정은
-보통 이전 측정에 문제가 있어서 수행됨 → 최신이 가장 신뢰할 만함.
-**한계:** 이 가정이 깨지면 main 분석이 망가짐.  현재 데이터에선 안전한 것 확인됨 (#4).
-
-## 왜 dλ/dV 값을 NaN 으로 안 바꾸고 그대로 두는가?
-Slope filter 발동했을 때 V_π 만 NaN, `dlam_dV_pm_per_V` 는 측정값 그대로 보고.
-이유: 진단을 위해서.  dλ/dV 값을 보면 *왜* V_π 가 NaN 인지 즉시 알 수 있음
-(0 근처면 측정 망가짐, 정상값이면 다른 이유).
+1. R. A. Soref and B. R. Bennett, "Electrooptical effects in silicon",
+   *IEEE Journal of Quantum Electronics* **23**, 123-129 (1987).
+2. G. T. Reed et al., "Silicon optical modulators", *Nature Photonics*
+   **4**, 518-526 (2010).
+3. A. H. Patel et al., "Design, analysis, and transmission system
+   performance of a 41 GHz silicon photonic modulator", *Optics
+   Express* **23**, 14263 (2015).
+4. J. Witzens, "High-speed silicon photonics modulators",
+   *Proceedings of the IEEE* **106**, 2158-2182 (2018).
+5. S. K. Selvaraja et al., "Process variation in silicon photonic
+   devices", *Applied Optics* **52**, 7638 (2013).
+6. Y. Xing, J. Dong, U. Khan, and W. Bogaerts, "Capturing the effects of
+   spatial process variations in silicon photonic circuits",
+   *ACS Photonics* **10**, 928 (2023).
+7. P. Xu et al., "Optical and geometric parameter extraction across
+   300-mm photonic integrated circuit wafers", *APL Photonics* **9**,
+   016104 (2024).
+8. B. Iglewicz and D. Hoaglin, *How to detect and handle outliers*,
+   ASQC Quality Press, 1993.
