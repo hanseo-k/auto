@@ -67,6 +67,7 @@ def process_die(xml_path):
         'Vpi_V':    vpi_info['vpi_V'],
         'FSR_nm':           vpi_info['fsr_nm'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
+        'linearity_R2':     vpi_info['linearity_R2'],
         'vpi_status':       vpi_info['vpi_status'],
         # ── Splitter 영역 ─────────────────────────────────────────
         'amplitude_ratio_k': passive['amplitude_ratio_k'],

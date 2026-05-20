@@ -101,6 +101,7 @@ def extract_vpi(die):
 
     half = min(0.4, fsr * 0.35)
     slopes = []
+    r2_values = []   # 각 null fit 의 R² (선형성 지표)
     for lam0 in deep:
         positions = []
         for v in rev_biases:
@@ -114,35 +115,52 @@ def extract_vpi(die):
         total_shift = abs(positions[valid][-1] - positions[valid][0])
         if total_shift > half * 1.5:
             continue
-        s, _ = np.polyfit(np.array(rev_biases)[valid], positions[valid], 1)
+        vb = np.array(rev_biases)[valid]
+        yy = positions[valid]
+        s, b = np.polyfit(vb, yy, 1)
         slopes.append(s)
+        # R² (선형성): 1 = 완벽 직선, 0 = 무관계
+        pred = s * vb + b
+        ss_res = np.sum((yy - pred) ** 2)
+        ss_tot = np.sum((yy - yy.mean()) ** 2)
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float('nan')
+        r2_values.append(r2)
 
     if not slopes:
         return _result(fsr=fsr, status='no_slopes')
 
     slopes = np.array(slopes)
+    r2_arr = np.array(r2_values)
     if len(slopes) >= 3:
         med = np.median(slopes)
         mad = np.median(np.abs(slopes - med))
-        slopes = slopes[np.abs(slopes - med) <= 3 * mad + 1e-6]
+        keep = np.abs(slopes - med) <= 3 * mad + 1e-6
+        slopes = slopes[keep]
+        r2_arr = r2_arr[keep]
 
     dlam_dV = float(np.mean(slopes))            # nm/V
     dlam_dV_pm = dlam_dV * 1000                  # pm/V (보고용)
 
+    # 선형성 R² (살아남은 null 들의 median — 한 null 이 우연히 좋게/나쁘게 나오는 효과 완화)
+    linearity_r2 = float(np.nanmedian(r2_arr)) if len(r2_arr) > 0 else float('nan')
+
     # Slope filter: 너무 작으면 측정 망가진 것 → V_π 폭주 방지
     if abs(dlam_dV_pm) < MIN_SLOPE_PM_PER_V:
-        return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm, status='slope_filter')
+        return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm,
+                       r2=linearity_r2, status='slope_filter')
 
     vpi = fsr / (2 * abs(dlam_dV))
-    return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm, vpi=vpi, status='ok')
+    return _result(fsr=fsr, dlam_dV_pm=dlam_dV_pm, vpi=vpi,
+                   r2=linearity_r2, status='ok')
 
 
-def _result(fsr=None, dlam_dV_pm=None, vpi=None, status='ok'):
+def _result(fsr=None, dlam_dV_pm=None, vpi=None, r2=None, status='ok'):
     """반환 dict 만드는 helper."""
     return {
         'fsr_nm':           round(fsr, 4) if fsr is not None else float('nan'),
         'dlam_dV_pm_per_V': round(dlam_dV_pm, 2) if dlam_dV_pm is not None else float('nan'),
         'vpi_V':            round(vpi, 2) if vpi is not None else float('nan'),
+        'linearity_R2':     round(r2, 4) if r2 is not None and not np.isnan(r2) else float('nan'),
         'vpi_status':       status,
     }
 
