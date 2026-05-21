@@ -44,7 +44,7 @@ import decompose_variation
 import analyze_by_date
 
 
-DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
+DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
 
 
 def process_die(xml_path):

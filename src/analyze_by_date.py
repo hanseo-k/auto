@@ -28,7 +28,7 @@ from outlier_detect import PHYSICAL_BOUNDS
 from plot_common import WAFER_BAND_COLOR
 
 
-DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
+DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
 
 
 def find_all_xmls_with_dates(root_dir):

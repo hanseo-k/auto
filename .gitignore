@@ -6,7 +6,8 @@ __pycache__/
 # macOS
 .DS_Store
 
-# res 안의 타임스탬프 폴더만 무시 (csv/, figures/ 는 추적)
+# res 안의 타임스탬프 폴더만 무시 (csv/, figures/, diagnostics/ 는 추적)
 res/*/
 !res/csv/
 !res/figures/
+!res/diagnostics/

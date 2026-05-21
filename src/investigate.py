@@ -22,8 +22,8 @@ from extract_vpi import extract_vpi, _parabolic_null
 from analyze_by_date import find_all_xmls_with_dates
 
 
-DATA_ROOT = '/Users/gimhanseo/Desktop/공프/HY202103'
-OUT = os.path.join(PROGRAM_ROOT, 'doc', 'investigation')
+DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
+OUT = os.path.join(PROGRAM_ROOT, 'res', 'diagnostics')
 os.makedirs(OUT, exist_ok=True)
 
 
