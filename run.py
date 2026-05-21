@@ -56,15 +56,24 @@ def process_die(xml_path):
     il = extract_il(die)
     vpi_info = extract_vpi(die)
     passive  = extract_passive_params(die, er)
+    # V_pi·L : 디바이스 표준 spec (V·cm)
+    vpi_V = vpi_info['vpi_V']
+    L_um = die.get('length_um')
+    vpi_L_V_cm = (vpi_V * L_um * 1e-4) if (vpi_V is not None
+                                            and not pd.isna(vpi_V)
+                                            and L_um is not None) else float('nan')
+
     row = {
         'Wafer':    die['wafer'],
         'Band':     die['band'],
         'Row':      die['row'],
         'Col':      die['col'],
-        'Width_nm': die['width_nm'],
+        'Width_nm':  die['width_nm'],
+        'Length_um': die['length_um'],
         'ER_dB':    er,
         'IL_dB':    il,
-        'Vpi_V':    vpi_info['vpi_V'],
+        'Vpi_V':    vpi_V,
+        'Vpi_L_V_cm':       round(vpi_L_V_cm, 4) if not pd.isna(vpi_L_V_cm) else float('nan'),
         'FSR_nm':           vpi_info['fsr_nm'],
         'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
         'R2_dlam_vs_V':     vpi_info['linearity_R2'],
@@ -213,8 +222,20 @@ def main():
         ER=('ER_dB', 'median'),
         IL=('IL_dB', 'median'),
         Vpi=('Vpi_V', 'median'),
-    ).round(2)
+        VpiL=('Vpi_L_V_cm', 'median'),
+    ).round(3)
     print(summary)
+
+    # Width × Length 별 통계 (디바이스 디자인 그룹화)
+    print('\n[Width × Length 그룹별 통계 (신뢰 데이터만)]')
+    width_summary = trusted.groupby(['Width_nm', 'Length_um', 'Band']).agg(
+        n=('Row', 'count'),
+        ER_med=('ER_dB', 'median'), ER_std=('ER_dB', 'std'),
+        IL_med=('IL_dB', 'median'), IL_std=('IL_dB', 'std'),
+        Vpi_med=('Vpi_V', 'median'), Vpi_std=('Vpi_V', 'std'),
+        VpiL_med=('Vpi_L_V_cm', 'median'),
+    ).round(3)
+    print(width_summary)
 
 
 if __name__ == '__main__':

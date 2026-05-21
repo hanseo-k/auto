@@ -23,8 +23,14 @@ def _arr(node):
 
 
 def _parse_width(modulator_name):
-    """'MZMCTE_LULAB_450_500' → 450"""
+    """'MZMCTE_LULAB_450_500' → 450 (width, nm)"""
     m = re.search(r'_LULAB_(\d+)_', modulator_name)
+    return int(m.group(1)) if m else None
+
+
+def _parse_length(modulator_name):
+    """'MZMCTE_LULAB_450_500' → 500 (length, um)"""
+    m = re.search(r'_LULAB_\d+_(\d+)', modulator_name)
     return int(m.group(1)) if m else None
 
 
@@ -60,6 +66,7 @@ def load_die(xml_path):
         'col': int(tsi.attrib['DieColumn']),
         'lam_c': lam_c,
         'width_nm': None,
+        'length_um': None,
         'ref_L': None, 'ref_IL': None,
         'sweeps': {}, 'iv_V': None, 'iv_I': None,
     }
@@ -81,6 +88,7 @@ def load_die(xml_path):
         if 'ALIGN' in name.upper():
             continue
         out['width_nm'] = _parse_width(name)
+        out['length_um'] = _parse_length(name)
         for pc in mod.findall('PortCombo'):
             iv = pc.find('IVMeasurement')
             if iv is not None:

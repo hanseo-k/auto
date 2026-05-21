@@ -275,7 +275,25 @@ no_sweeps` 를 구분할 수 있다.
 A-B 는 고신뢰 신호 추출에 적합한 다이이며, C-D 는 측정 불확실성이
 증가하는 영역, F 는 다운스트림 통계에서 제외해야 하는 다이를 의미한다.
 
-#### 3.2.6 Passive 파라미터
+#### 3.2.6 정규화 반파전압 (Vpi_L_V_cm)
+
+V_pi 는 디바이스 길이에 반비례하므로 (Section 2.1 에서 위상 변화
+`Delta_phi ~ L`) 길이가 다른 디바이스를 직접 비교하기 어렵다. 표준
+spec 으로는 길이-정규화 반파전압을 사용한다.
+
+```
+V_pi * L  (단위: V*cm)
+```
+
+이는 phase shifter 의 modulation efficiency 자체를 측정하며, Si
+depletion-mode MZM 의 문헌 표준 범위는 1 ~ 3 V*cm (Soref & Bennett
+1987, Witzens 2018).
+
+XML 의 modulator 이름 `MZM<Band>TE_LULAB_<width_nm>_<length_um>`
+에서 length 를 파싱하며, 파이프라인은 다이별 `Length_um` 과
+`Vpi_L_V_cm` 컬럼을 출력한다.
+
+#### 3.2.7 Passive 파라미터
 
 측정된 ER 로부터 splitter amplitude 비를 2.5 절의 닫힌 형식으로
 계산한다. MZM 구간 propagation loss 는 ER 윈도우 안에서 모든
@@ -410,10 +428,11 @@ git 으로 추적된다.
 
 | 컬럼 | 설명 |
 |---|---|
-| Wafer, Band, Row, Col, Width_nm | 식별자 |
+| Wafer, Band, Row, Col, Width_nm, Length_um | 식별자 |
 | ER_dB | 소광비 (3.2.1) |
 | IL_dB | 삽입손실 (3.2.2) |
 | Vpi_V | 반파전압 (3.2.3) |
+| Vpi_L_V_cm | 정규화 반파전압 V_pi * L (V*cm) — Section 3.2.6 |
 | FSR_nm | V=-2 V 스펙트럼의 free spectral range |
 | dlam_dV_pm_per_V | 역바이어스에서의 null 이동률 평균 |
 | R2_dlam_vs_V | Delta_lambda vs V 직선 피팅의 median R^2 |
@@ -481,7 +500,42 @@ positive 가 발생하지 않는다.
 dedup 으로 `data.csv` 에는 06-03 의 정상 측정만 남으므로 main
 분석에서는 망가진 데이터의 영향이 없다.
 
-### 5.4 선형성 분포
+### 5.4 디바이스 디자인 그룹
+
+HY202103 의 modulator 디자인은 두 가지가 사용되었다 (이름 패턴
+`MZM<X>TE_LULAB_<width>_<length>`):
+
+| Width (nm) | Length (um) | Band | Wafer |
+|---|---|---|---|
+| 450 | 500 | C | D07, D08 |
+| 380 | 500 | O | D08, D23, D24 |
+
+길이가 양 디자인 모두 500 um (= 0.05 cm) 으로 동일하므로 V_pi 와
+V_pi*L 의 비율 관계는 단순한 상수배이다. 다만 명시적 컬럼
+(`Length_um`, `Vpi_L_V_cm`) 을 두면 길이가 다른 디바이스가 추가될
+때도 같은 코드로 처리할 수 있다.
+
+Width 와 Band 가 1:1 매핑되므로 (Wafer, Band) 그룹화가 자동으로
+Width 도 분리한다. 다른 데이터셋에서 Band 와 Width 가 1:1 이
+아닐 경우 outlier 그룹 키를 `(Wafer, Band, Width_nm, Length_um)`
+으로 확장하는 것을 권장한다.
+
+HY202103 의 측정된 V_pi*L:
+
+| 그룹 | Width | Median V_pi*L (V*cm) |
+|---|---|---|
+| D07-C | 450 nm | ~ 1.75 |
+| D08-C | 450 nm | ~ 1.71 |
+| D08-O | 380 nm | ~ 1.40 |
+| D23-O | 380 nm | ~ 2.07 |
+| D24-O | 380 nm | ~ 2.04 |
+
+모든 그룹이 문헌 표준 범위 (1-3 V*cm) 안에 있다. 더 짧은 width 의
+O-band 가 더 큰 V_pi*L 을 보이는 것은 일반적 경향과 일치한다 (좁은
+도파로는 carrier 와 광 모드의 overlap 이 변하면서 modulation
+efficiency 가 다소 감소).
+
+### 5.5 선형성 분포
 
 `R2_dlam_vs_V` 의 그룹별 통계 (평균과 최솟값):
 
@@ -497,7 +551,7 @@ C-band 측정이 가장 깨끗한 선형 depletion 거동을 보인다. D24 의
 O-band 다이 중 일부는 R^2 < 0.90 (등급 C-D) 으로 추출 자체는
 성공하지만 통합 통계에서는 가중치를 낮춰야 한다.
 
-### 5.5 변동 분해
+### 5.6 변동 분해
 
 위치 의존 성분이 metric 분산 중 차지하는 비율 (degree-2 다항식 fit
 의 R^2):
