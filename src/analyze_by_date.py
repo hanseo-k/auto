@@ -21,9 +21,8 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from xml_loader import load_die, BAND_OF_FILE
-from extract_er import extract_er
-from extract_il import extract_il
-from extract_vpi import extract_vpi, status_to_reason
+from extract_vpi import status_to_reason
+from die_extractor import process_die
 from outlier_detect import PHYSICAL_BOUNDS
 from plot_common import WAFER_BAND_COLOR
 
@@ -46,24 +45,15 @@ def find_all_xmls_with_dates(root_dir):
 
 
 def _process(args):
+    """공통 die_extractor.process_die 사용 + Date 키 prepend."""
     xml_path, date_str = args
-    die = load_die(xml_path)
-    if die is None:
+    row = process_die(xml_path)
+    if row is None:
         return None
-    vpi_info = extract_vpi(die)
-    return {
-        'Date':     date_str,
-        'Wafer':    die['wafer'],
-        'Band':     die['band'],
-        'Row':      die['row'],
-        'Col':      die['col'],
-        'Width_nm': die['width_nm'],
-        'ER_dB':    extract_er(die),
-        'IL_dB':    extract_il(die),
-        'Vpi_V':    vpi_info['vpi_V'],
-        'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],  # slope filter 진단용
-        'vpi_status': vpi_info['vpi_status'],              # 명시적 꼬리표
-    }
+    # Date 가 맨 앞에 오도록 새 dict 구성
+    out = {'Date': date_str}
+    out.update(row)
+    return out
 
 
 def _reason(value, lo, hi):

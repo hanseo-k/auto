@@ -29,11 +29,8 @@ import shutil
 import subprocess
 from concurrent.futures import ProcessPoolExecutor
 
-from xml_loader import find_all_xmls, load_die
-from extract_er import extract_er
-from extract_il import extract_il
-from extract_vpi import extract_vpi, linearity_grade
-from extract_passive_params import extract_passive_params
+from xml_loader import find_all_xmls
+from die_extractor import process_die
 from outlier_detect import mark_outliers
 from csv_export import make_run_dir, export_csv
 import wafer_map
@@ -43,54 +40,10 @@ import zscore_map
 import decompose_variation
 import analyze_by_date
 import evaluation
+import evaluation_by_date
 
 
 DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
-
-
-def process_die(xml_path):
-    """단일 XML → 한 행 dict (ER, IL, Vpi 포함)."""
-    die = load_die(xml_path)
-    if die is None:
-        return None
-    er = extract_er(die)
-    il = extract_il(die)
-    vpi_info = extract_vpi(die)
-    passive  = extract_passive_params(die, er)
-    # V_pi·L : 디바이스 표준 spec (V·cm)
-    vpi_V = vpi_info['vpi_V']
-    L_um = die.get('length_um')
-    vpi_L_V_cm = (vpi_V * L_um * 1e-4) if (vpi_V is not None
-                                            and not pd.isna(vpi_V)
-                                            and L_um is not None) else float('nan')
-
-    row = {
-        'Wafer':    die['wafer'],
-        'Band':     die['band'],
-        'Row':      die['row'],
-        'Col':      die['col'],
-        'Width_nm':  die['width_nm'],
-        'Length_um': die['length_um'],
-        'ER_dB':    er,
-        'IL_dB':    il,
-        'Vpi_V':    vpi_V,
-        'Vpi_L_V_cm':       round(vpi_L_V_cm, 4) if not pd.isna(vpi_L_V_cm) else float('nan'),
-        'FSR_nm':           vpi_info['fsr_nm'],
-        'dlam_dV_pm_per_V': vpi_info['dlam_dV_pm_per_V'],
-        'R2_dlam_vs_V':     vpi_info['linearity_R2'],
-        'quality_grade':    linearity_grade(vpi_info['linearity_R2'],
-                                            vpi_info['vpi_status']),
-        'vpi_status':       vpi_info['vpi_status'],
-        # ── Splitter 영역 ─────────────────────────────────────────
-        'amplitude_ratio_k': passive['amplitude_ratio_k'],
-        'power_split_ratio': passive['power_split_ratio'],
-        'imbalance_dB':      passive['imbalance_dB'],
-        'mzm_loss_dB':       passive['mzm_loss_dB'],
-    }
-    # 바이어스별 imbalance — 'splitter 영역' 의 상세 컬럼 (V 순서대로)
-    for V in sorted(passive['imbalance_per_bias_dB'].keys()):
-        row[f'imbalance_V{V:+.2f}_dB'] = passive['imbalance_per_bias_dB'][V]
-    return row
 
 
 METRICS = [
@@ -199,9 +152,13 @@ def main():
     print('       날짜별 분석 (data_by_date.csv + by_date_summary.png)...')
     analyze_by_date.export_and_plot()
 
-    # 6c) 다이별 평가 (evaluation.csv + evaluation.xlsx)
-    print('       다이별 평가 (evaluation.csv + evaluation.xlsx)...')
+    # 6c) 다이별 평가 (dedup 후 — evaluation.csv + .xlsx)
+    print('       다이별 평가 (evaluation.csv + .xlsx)...')
     evaluation.main()
+
+    # 6d) 날짜별 평가 (모든 측정 — evaluation_by_date.csv + .xlsx)
+    print('       날짜별 평가 (evaluation_by_date.csv + .xlsx)...')
+    evaluation_by_date.main()
 
     # 6c) GitHub push
     subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
