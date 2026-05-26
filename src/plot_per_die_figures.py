@@ -214,67 +214,50 @@ def _envelope_from_peaks(bias_records, poly_deg=3):
 # ──────────────────────────────────────────────────────────────────────
 # Plot 03 — Flat transmission (2-step flatten)
 # ──────────────────────────────────────────────────────────────────────
-def plot_03_flat_transmission(die, save_path):
-    """2-step flatten:
-        Step 1) envelope (전체 bias 의 global peak 다항식 fit) subtract
-        Step 2) flat 된 결과의 local peak (window=14) 들에 또 1차 fit
-                → 각 봉우리를 지나는 직선.  plot 에 검정 점선으로 overlay.
+def plot_03_flat_transmission(die, save_path, ref_poly_deg=6):
+    """Reference fit 차감으로 평탄화.
+
+    절차:
+        1) Reference (ALIGN) 스펙트럼에 다항식 (기본 6차) fit → ref_fit
+        2) flat_MZM(λ)  =  MZM_raw(λ)  −  ref_fit(λ)
+        3) flat_ref(λ)  =  ref(λ)      −  ref_fit(λ)   (≈ 0, 직선)
+        4) 모든 곡선의 max 를 0 으로 정렬
+
+    plot 에 ref 도 같이 그리면, ref 자체는 거의 0 dB 직선으로 나타난다 (정상).
     """
+    if die['ref_L'] is None:
+        return
     sweeps = die['sweeps']
     biases = sorted(sweeps.keys())
-    bias_records = [(V, sweeps[V]) for V in biases]
-    env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=3)
-    if env is None:
-        return
+    ref_L = die['ref_L']
+    ref_IL = die['ref_IL']
+
+    # 1) reference polynomial fit
+    wl_mean = float(np.mean(ref_L))
+    ref_coef = np.polyfit(ref_L - wl_mean, ref_IL, ref_poly_deg)
+    def ref_fit_at(wl):
+        return np.polyval(ref_coef, wl - wl_mean)
 
     cmap = get_cmap('coolwarm')
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=120)
 
-    # Step 1: envelope subtract, 동시에 모든 bias 의 flat-peak 수집
-    all_peak_wl, all_peak_y = [], []
-    flat_data = []
-    for i, (V, (wl, y)) in enumerate(bias_records):
-        flat = y - env(wl)
+    # 2) flatten 각 MZM bias
+    for i, V in enumerate(biases):
+        wl, y = sweeps[V]
+        flat = y - ref_fit_at(wl)
         flat -= np.max(flat)
         color = cmap(i / max(len(biases) - 1, 1))
-        flat_data.append((V, wl, flat, color))
-        pk = _find_peaks_local(flat, window=14)
-        if len(pk) > 0:
-            all_peak_wl.append(wl[pk])
-            all_peak_y.append(flat[pk])
+        ax.plot(wl, flat, lw=1.0, color=color, label=f'MZM {V:+.1f} V')
 
-    # Step 2: peak 들 다항식 fit (1차 = 직선)
-    step2_poly = None
-    wl_range = None
-    if all_peak_wl:
-        xx = np.concatenate(all_peak_wl)
-        yy = np.concatenate(all_peak_y)
-        step2_poly = np.polyfit(xx - wl_mean, yy, 1)
-        wl_min = min(flat_data[0][1].min(), float(xx.min()))
-        wl_max = max(flat_data[0][1].max(), float(xx.max()))
-        wl_range = (wl_min, wl_max)
-
-    # plot: flat spectra
-    for V, wl, flat, color in flat_data:
-        ax.plot(wl, flat, lw=0.9, color=color, label=f'MZM {V:+.1f} V')
-
-    # 각 봉우리 지나는 직선 (step 2 fit)
-    if step2_poly is not None:
-        wl_dense = np.linspace(wl_range[0], wl_range[1], 200)
-        line = np.polyval(step2_poly, wl_dense - wl_mean)
-        ax.plot(wl_dense, line, color='black', lw=1.4, ls='--',
-                label='Residual baseline (1st-order fit of peaks)')
-
-    # reference 도 같이 (envelope 차감)
-    if die['ref_L'] is not None:
-        ref_flat = die['ref_IL'] - env(die['ref_L'])
-        ref_flat -= np.max(ref_flat)
-        ax.plot(die['ref_L'], ref_flat, color='magenta', lw=1.0, alpha=0.7,
-                label='Reference (flat)')
+    # 3) reference 도 같은 fit 으로 평탄화 → 0 근처 직선
+    ref_flat = ref_IL - ref_fit_at(ref_L)
+    ref_flat -= np.max(ref_flat)
+    ax.plot(ref_L, ref_flat, color='magenta', lw=1.4,
+            label=f'Reference (flat after {ref_poly_deg}-th polyfit)')
 
     ax.set_xlabel('Wavelength [nm]')
     ax.set_ylabel('Flat transmission [dB]')
-    ax.set_title('Flat transmission — envelope subtracted + peak fit line',
+    ax.set_title('Flat transmission — reference polynomial subtracted',
                  fontsize=11, fontweight='bold')
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8, loc='lower center', ncol=4, framealpha=0.85)
@@ -359,8 +342,8 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
                 break
 
     T_fit = _mzi_model(wl_sel, A, B, f, p, w)
-    # 극솟값 보정
-    T_fit -= (np.min(T_fit) - np.min(T_lin))
+    # NOTE: 공프/스탭피팅.py 가 정답.  min_diff 보정은 fit 결과를 강제로
+    # 데이터의 min 에 맞추는 cosmetic 조작이라 제거.
     r2 = _r2(T_lin, T_fit)
 
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=120)
@@ -410,8 +393,9 @@ def plot_05_iv_semilog(die, save_path):
 # ──────────────────────────────────────────────────────────────────────
 def plot_06_iv_fit(die, save_path):
     """IV 두 영역 polyfit (log10|I| 도메인):
-        V <= 0.5 (reverse + zero):  3차 polynomial
-        V >  0.5 (forward, ~3 점):  1차 polynomial (= semilog 직선)
+        V in [-2.0, 0.25]:  3차 polynomial (노란 곡선)
+        V in [ 0.5, 1.0 ]:  1차 polynomial (초록 직선, 3 점)
+        0.25 < V < 0.5 는 측정점이 없는 빈 영역.
     """
     if die['iv_V'] is None:
         return
@@ -420,8 +404,8 @@ def plot_06_iv_fit(die, save_path):
     I_abs = np.clip(np.abs(I_signed), 1e-15, None)
     logI = np.log10(I_abs)
 
-    V_low_mask  = V <= 0.5
-    V_high_mask = V >  0.5
+    V_low_mask  = V <= 0.25
+    V_high_mask = V >= 0.5
     V_low,  logI_low  = V[V_low_mask],  logI[V_low_mask]
     V_high, logI_high = V[V_high_mask], logI[V_high_mask]
 
@@ -431,32 +415,32 @@ def plot_06_iv_fit(die, save_path):
 
     info_lines = []
 
-    # V <= 0.5: 3차 polynomial
+    # V <= 0.25: 3차 polynomial
     if len(V_low) >= 4:
         coef_low = np.polyfit(V_low, logI_low, 3)
         V_low_dense = np.linspace(V_low.min(), V_low.max(), 200)
         I_low_fit = 10 ** np.polyval(coef_low, V_low_dense)
         r2_low = _r2(logI_low, np.polyval(coef_low, V_low))
         ax.plot(V_low_dense, I_low_fit, '-', color='orange', lw=2,
-                label=f'V<=0.5 V: 3rd polyfit (R²={r2_low:.3f})')
-        info_lines.append(f'V<=0.5:   3rd polyfit, R² = {r2_low:.4f}')
+                label=f'V∈[-2.0, 0.25]: 3rd polyfit (R²={r2_low:.3f})')
+        info_lines.append(f'V≤0.25:  3rd polyfit, R² = {r2_low:.4f}')
 
-    # V > 0.5: 1차 (forward semilog 직선)
+    # V >= 0.5: 1차 (forward semilog 직선, 보통 3 점)
     if len(V_high) >= 2:
         coef_high = np.polyfit(V_high, logI_high, 1)
         V_high_dense = np.linspace(V_high.min(), V_high.max(), 200)
         I_high_fit = 10 ** np.polyval(coef_high, V_high_dense)
         r2_high = _r2(logI_high, np.polyval(coef_high, V_high)) if len(V_high) >= 3 else float('nan')
         slope_dec_per_V = coef_high[0]
-        # Ideality factor n = 1 / (slope · ln10 · VT)
+        # Ideality factor: n = 1 / (slope · ln10 · VT),  VT = kT/q ≈ 0.02585 V
         VT = 0.02585
         ideality = 1.0 / (slope_dec_per_V * np.log(10) * VT) if slope_dec_per_V > 0 else float('nan')
         ax.plot(V_high_dense, I_high_fit, '-', color='green', lw=2,
-                label=f'V>0.5 V: 1st polyfit (slope={slope_dec_per_V:.1f} dec/V)')
-        info_lines.append(f'V>0.5:    1st polyfit, slope={slope_dec_per_V:.2f} dec/V')
-        info_lines.append(f'          ideality n = {ideality:.2f}')
+                label=f'V∈[0.5, 1.0]: 1st polyfit (slope={slope_dec_per_V:.1f} dec/V)')
+        info_lines.append(f'V≥0.5:   1st polyfit, slope = {slope_dec_per_V:.2f} dec/V')
+        info_lines.append(f'         ideality n = {ideality:.2f}')
         if not np.isnan(r2_high):
-            info_lines.append(f'          R² = {r2_high:.4f}')
+            info_lines.append(f'         R² = {r2_high:.4f}')
 
     if info_lines:
         ax.text(0.02, 0.97, '\n'.join(info_lines), transform=ax.transAxes,
@@ -464,10 +448,11 @@ def plot_06_iv_fit(die, save_path):
                 bbox=dict(facecolor='white', alpha=0.85))
 
     ax.axvline(0, color='gray', lw=0.5)
-    ax.axvline(0.5, color='gray', lw=0.5, ls=':')
+    ax.axvspan(0.25, 0.5, color='lightgray', alpha=0.3,
+               label='gap (no measurement)')
     ax.set_xlabel('Voltage [V]')
     ax.set_ylabel('Current [A]')
-    ax.set_title('IV analysis — V≤0.5 V: 3rd polyfit / V>0.5 V: 1st polyfit',
+    ax.set_title('IV analysis — V≤0.25: 3rd polyfit / V≥0.5: 1st polyfit',
                  fontsize=11, fontweight='bold')
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=9, loc='lower right', framealpha=0.85)
