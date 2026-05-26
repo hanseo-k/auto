@@ -49,8 +49,11 @@ def _r2(y, y_fit):
     return 1.0 - ss_res / ss_tot if ss_tot > 0 else float('nan')
 
 
-def _find_peaks(y, window=14):
-    """국소 윈도우 기반 peak 검출."""
+def _find_peaks_local(y, window=14):
+    """국소 윈도우 기반 peak 검출 (작은 oscillation 의 peak 포함).
+
+    공프/피팅한거 플랫.py 와 동일.  03 의 봉우리 검출용.
+    """
     y = np.asarray(y)
     n = len(y)
     peaks = []
@@ -58,6 +61,27 @@ def _find_peaks(y, window=14):
         if y[i] == np.max(y[i - window: i + window + 1]):
             peaks.append(i)
     return np.array(peaks, dtype=int)
+
+
+def _find_peaks_global(y, window=800):
+    """전역 윈도우 기반 큰 global peak 만 검출.
+
+    공프/mzm_fit.py 와 동일.  envelope 다항식 fit 용 - 적은 점으로 부드러운
+    envelope 을 얻기 위해 사용.
+    """
+    y = np.asarray(y)
+    n = len(y)
+    peaks = []
+    for i in range(0, n):
+        lo = max(0, i - window)
+        hi = min(n, i + window + 1)
+        if y[i] == np.max(y[lo:hi]):
+            peaks.append(i)
+    return np.array(peaks, dtype=int)
+
+
+# Backward compatibility — 기존 코드가 _find_peaks 를 부른다면 local 으로
+_find_peaks = _find_peaks_local
 
 
 def _mzi_model(wl, A, B, fsr, phi, wl0):
@@ -168,7 +192,8 @@ def _envelope_from_peaks(bias_records, poly_deg=3):
     x_all, y_all = [], []
     wl_ref = None
     for V, (wl, y) in bias_records:
-        pk = _find_peaks(y, window=14)
+        # 공프/mzm_fit.py 와 동일: 큰 global peak 만 사용 (window=800)
+        pk = _find_peaks_global(y, window=800)
         if len(pk) == 0:
             continue
         x_all.append(wl[pk]); y_all.append(y[pk])
@@ -190,20 +215,55 @@ def _envelope_from_peaks(bias_records, poly_deg=3):
 # Plot 03 — Flat transmission (2-step flatten)
 # ──────────────────────────────────────────────────────────────────────
 def plot_03_flat_transmission(die, save_path):
+    """2-step flatten:
+        Step 1) envelope (전체 bias 의 global peak 다항식 fit) subtract
+        Step 2) flat 된 결과의 local peak (window=14) 들에 또 1차 fit
+                → 각 봉우리를 지나는 직선.  plot 에 검정 점선으로 overlay.
+    """
     sweeps = die['sweeps']
     biases = sorted(sweeps.keys())
     bias_records = [(V, sweeps[V]) for V in biases]
-    env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=4)
+    env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=3)
     if env is None:
         return
 
     cmap = get_cmap('coolwarm')
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=120)
+
+    # Step 1: envelope subtract, 동시에 모든 bias 의 flat-peak 수집
+    all_peak_wl, all_peak_y = [], []
+    flat_data = []
     for i, (V, (wl, y)) in enumerate(bias_records):
         flat = y - env(wl)
-        flat -= np.max(flat)   # max → 0 으로 정규화
+        flat -= np.max(flat)
         color = cmap(i / max(len(biases) - 1, 1))
+        flat_data.append((V, wl, flat, color))
+        pk = _find_peaks_local(flat, window=14)
+        if len(pk) > 0:
+            all_peak_wl.append(wl[pk])
+            all_peak_y.append(flat[pk])
+
+    # Step 2: peak 들 다항식 fit (1차 = 직선)
+    step2_poly = None
+    wl_range = None
+    if all_peak_wl:
+        xx = np.concatenate(all_peak_wl)
+        yy = np.concatenate(all_peak_y)
+        step2_poly = np.polyfit(xx - wl_mean, yy, 1)
+        wl_min = min(flat_data[0][1].min(), float(xx.min()))
+        wl_max = max(flat_data[0][1].max(), float(xx.max()))
+        wl_range = (wl_min, wl_max)
+
+    # plot: flat spectra
+    for V, wl, flat, color in flat_data:
         ax.plot(wl, flat, lw=0.9, color=color, label=f'MZM {V:+.1f} V')
+
+    # 각 봉우리 지나는 직선 (step 2 fit)
+    if step2_poly is not None:
+        wl_dense = np.linspace(wl_range[0], wl_range[1], 200)
+        line = np.polyval(step2_poly, wl_dense - wl_mean)
+        ax.plot(wl_dense, line, color='black', lw=1.4, ls='--',
+                label='Residual baseline (1st-order fit of peaks)')
 
     # reference 도 같이 (envelope 차감)
     if die['ref_L'] is not None:
@@ -214,7 +274,7 @@ def plot_03_flat_transmission(die, save_path):
 
     ax.set_xlabel('Wavelength [nm]')
     ax.set_ylabel('Flat transmission [dB]')
-    ax.set_title('Flat transmission as measured (2-step flatten)',
+    ax.set_title('Flat transmission — envelope subtracted + peak fit line',
                  fontsize=11, fontweight='bold')
     ax.grid(alpha=0.3)
     ax.legend(fontsize=8, loc='lower center', ncol=4, framealpha=0.85)
@@ -235,7 +295,7 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
     V_sel = min(biases, key=lambda v: abs(v - target_bias))
     wl_sel, y_sel = sweeps[V_sel]
 
-    env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=4)
+    env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=3)
     if env is None:
         return
 
@@ -349,54 +409,54 @@ def plot_05_iv_semilog(die, save_path):
 # Plot 06 — IV fitting (reverse poly + forward Shockley)
 # ──────────────────────────────────────────────────────────────────────
 def plot_06_iv_fit(die, save_path):
+    """IV 두 영역 polyfit (log10|I| 도메인):
+        V <= 0.5 (reverse + zero):  3차 polynomial
+        V >  0.5 (forward, ~3 점):  1차 polynomial (= semilog 직선)
+    """
     if die['iv_V'] is None:
         return
     V = np.asarray(die['iv_V'], dtype=float)
     I_signed = -np.asarray(die['iv_I'], dtype=float)
     I_abs = np.clip(np.abs(I_signed), 1e-15, None)
+    logI = np.log10(I_abs)
 
-    # 분할
-    V_rev_mask = V <= 0.25
-    V_fwd_mask = V >= 0.5
-
-    V_rev, I_rev = V[V_rev_mask], I_abs[V_rev_mask]
-    V_fwd, I_fwd = V[V_fwd_mask], I_abs[V_fwd_mask]
+    V_low_mask  = V <= 0.5
+    V_high_mask = V >  0.5
+    V_low,  logI_low  = V[V_low_mask],  logI[V_low_mask]
+    V_high, logI_high = V[V_high_mask], logI[V_high_mask]
 
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=120)
     ax.semilogy(V, I_abs, 'o', ms=6, mfc='gray', mec='black',
                 lw=0, label='Measured IV')
 
     info_lines = []
-    # 역방향 polynomial fit (log10|I|)
-    if len(V_rev) >= 4:
-        deg_rev = 6
-        logI_rev = np.log10(I_rev)
-        coef_rev = np.polyfit(V_rev, logI_rev, deg_rev)
-        V_rev_dense = np.linspace(V_rev.min(), V_rev.max(), 200)
-        I_rev_fit = 10 ** np.polyval(coef_rev, V_rev_dense)
-        r2_rev = _r2(logI_rev, np.polyval(coef_rev, V_rev))
-        ax.plot(V_rev_dense, I_rev_fit, '-', color='orange', lw=2,
-                label=f'Reverse polynomial fit (R²={r2_rev:.3f})')
-        info_lines.append(f'R²_rev = {r2_rev:.4f}')
 
-    # 순방향 Shockley fit
-    if len(V_fwd) >= 3:
-        try:
-            popt, _ = curve_fit(_shockley, V_fwd, I_fwd,
-                                p0=[1e-12, 1.5],
-                                bounds=([1e-20, 0.5], [1e-3, 5]),
-                                maxfev=5000)
-            Is, n_ideal = popt
-            V_fwd_dense = np.linspace(V_fwd.min(), V_fwd.max(), 200)
-            I_fwd_fit = _shockley(V_fwd_dense, *popt)
-            r2_fwd = _r2(I_fwd, _shockley(V_fwd, *popt))
-            ax.plot(V_fwd_dense, I_fwd_fit, '-', color='green', lw=2,
-                    label=f'Forward diode fit (n={n_ideal:.2f})')
-            info_lines.append(f'Is = {Is:.2e} A')
-            info_lines.append(f'n  = {n_ideal:.3f}')
-            info_lines.append(f'R²_fwd = {r2_fwd:.4f}')
-        except Exception as e:
-            info_lines.append(f'Shockley fit fail: {e}')
+    # V <= 0.5: 3차 polynomial
+    if len(V_low) >= 4:
+        coef_low = np.polyfit(V_low, logI_low, 3)
+        V_low_dense = np.linspace(V_low.min(), V_low.max(), 200)
+        I_low_fit = 10 ** np.polyval(coef_low, V_low_dense)
+        r2_low = _r2(logI_low, np.polyval(coef_low, V_low))
+        ax.plot(V_low_dense, I_low_fit, '-', color='orange', lw=2,
+                label=f'V<=0.5 V: 3rd polyfit (R²={r2_low:.3f})')
+        info_lines.append(f'V<=0.5:   3rd polyfit, R² = {r2_low:.4f}')
+
+    # V > 0.5: 1차 (forward semilog 직선)
+    if len(V_high) >= 2:
+        coef_high = np.polyfit(V_high, logI_high, 1)
+        V_high_dense = np.linspace(V_high.min(), V_high.max(), 200)
+        I_high_fit = 10 ** np.polyval(coef_high, V_high_dense)
+        r2_high = _r2(logI_high, np.polyval(coef_high, V_high)) if len(V_high) >= 3 else float('nan')
+        slope_dec_per_V = coef_high[0]
+        # Ideality factor n = 1 / (slope · ln10 · VT)
+        VT = 0.02585
+        ideality = 1.0 / (slope_dec_per_V * np.log(10) * VT) if slope_dec_per_V > 0 else float('nan')
+        ax.plot(V_high_dense, I_high_fit, '-', color='green', lw=2,
+                label=f'V>0.5 V: 1st polyfit (slope={slope_dec_per_V:.1f} dec/V)')
+        info_lines.append(f'V>0.5:    1st polyfit, slope={slope_dec_per_V:.2f} dec/V')
+        info_lines.append(f'          ideality n = {ideality:.2f}')
+        if not np.isnan(r2_high):
+            info_lines.append(f'          R² = {r2_high:.4f}')
 
     if info_lines:
         ax.text(0.02, 0.97, '\n'.join(info_lines), transform=ax.transAxes,
@@ -404,9 +464,10 @@ def plot_06_iv_fit(die, save_path):
                 bbox=dict(facecolor='white', alpha=0.85))
 
     ax.axvline(0, color='gray', lw=0.5)
+    ax.axvline(0.5, color='gray', lw=0.5, ls=':')
     ax.set_xlabel('Voltage [V]')
     ax.set_ylabel('Current [A]')
-    ax.set_title('IV analysis — reverse polynomial + forward diode fit',
+    ax.set_title('IV analysis — V≤0.5 V: 3rd polyfit / V>0.5 V: 1st polyfit',
                  fontsize=11, fontweight='bold')
     ax.grid(alpha=0.3, which='both')
     ax.legend(fontsize=9, loc='lower right', framealpha=0.85)
