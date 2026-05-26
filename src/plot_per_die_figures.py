@@ -157,8 +157,14 @@ def plot_02_ref_polyfit(die, save_path):
 # ──────────────────────────────────────────────────────────────────────
 # Helpers for envelope (2-step flatten)
 # ──────────────────────────────────────────────────────────────────────
-def _envelope_from_peaks(bias_records, poly_deg=4):
-    """모든 바이어스 spectrum 의 peak 들을 모아 글로벌 envelope 다항식 fit."""
+def _envelope_from_peaks(bias_records, poly_deg=3):
+    """모든 바이어스 spectrum 의 peak 들을 모아 글로벌 envelope 다항식 fit.
+
+    공프/mzm_fit.py 의 알고리즘을 그대로 사용:
+        - find_peaks window = 14 (작은 국소 윈도우, 피팅한거 플랫.py 와 동일)
+        - polynomial degree = 3 (4차 이상은 envelope 이 spectrum 디테일을 추종해
+          flatten 후 잔존 노이즈가 커짐 = 오버피팅)
+    """
     x_all, y_all = [], []
     wl_ref = None
     for V, (wl, y) in bias_records:
@@ -253,11 +259,11 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
         if fsr_init <= 0:
             fsr_init = 10.0
 
-    # Grid search (A, B 는 closed-form)
+    # Grid search (A, B 는 closed-form).  공프/mzm_fit.py 와 동일 dense grid.
     wl0_guess = float(np.mean(wl_sel))
-    fsr_grid = np.linspace(max(0.5, fsr_init * 0.7), fsr_init * 1.3, 21)
-    phi_grid = np.linspace(0, np.pi, 18, endpoint=False)
-    wl0_grid = wl0_guess + np.linspace(-fsr_init / 2, fsr_init / 2, 11)
+    fsr_grid = np.linspace(max(0.5, fsr_init * 0.7), fsr_init * 1.3, 41)
+    phi_grid = np.linspace(0, np.pi, 36, endpoint=False)
+    wl0_grid = wl0_guess + np.linspace(-fsr_init / 2, fsr_init / 2, 21)
 
     best = (np.inf, None)
     for f in fsr_grid:
@@ -269,12 +275,12 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
                 if ss < best[0]:
                     best = (ss, (A, B, f, p, w))
 
-    # Local refinement
+    # Local refinement — 공프/mzm_fit.py 의 80 iteration 그대로
     A, B, f, p, w = best[1]
     sf = (fsr_grid[1] - fsr_grid[0]) / 2
     sp = (phi_grid[1] - phi_grid[0]) / 2
     sw = (wl0_grid[1] - wl0_grid[0]) / 2
-    for _ in range(40):
+    for _ in range(80):
         improved = False
         for df in (-sf, 0, sf):
             for dp in (-sp, 0, sp):
