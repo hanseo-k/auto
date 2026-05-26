@@ -276,22 +276,35 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
 
     # target_bias 에 가장 가까운 bias 선택
     V_sel = min(biases, key=lambda v: abs(v - target_bias))
-    wl_sel, y_sel = sweeps[V_sel]
+    wl_full, y_full = sweeps[V_sel]
 
     env, wl_mean = _envelope_from_peaks(bias_records, poly_deg=3)
     if env is None:
         return
 
-    # 2-step flatten
+    # 양 끝단 trim — envelope 다항식 fit 이 끝단을 못 잡아 spike 가 남고
+    # 그게 max 가 되어 normalize 후 다른 모든 점이 압축되는 현상 방지.
+    # 각 끝에서 50 점 (또는 전체의 5%) 만큼 잘라낸다.
+    n_pts = len(wl_full)
+    trim = max(50, int(n_pts * 0.05))
+    wl_sel = wl_full[trim:-trim]
+    y_sel  = y_full[trim:-trim]
+
+    # 2-step flatten on trimmed spectrum
     flat_dB = y_sel - env(wl_sel)
     flat_dB -= np.max(flat_dB)
     T_lin = 10 ** (flat_dB / 10)
     T_lin = T_lin / np.max(T_lin)
 
-    # FSR 초기값 — valley-to-valley 거리
-    peak_idx = _find_peaks(flat_dB, window=14)
+    # FSR 초기값 — valley-to-valley 거리.
+    # 공프/스탭피팅.py 와 동일하게 큰 global peak (window=800) 만 사용.
+    # 작은 window 는 local noise peak 까지 잡아 FSR 가 절반으로 추정될 수 있다.
+    peak_idx = _find_peaks_global(flat_dB, window=800)
     if len(peak_idx) < 3:
-        fsr_init = 10.0   # fallback
+        # fallback — local peak 으로
+        peak_idx = _find_peaks_local(flat_dB, window=14)
+    if len(peak_idx) < 3:
+        fsr_init = 10.0
     else:
         mid = peak_idx[len(peak_idx) // 2]
         left = peak_idx[len(peak_idx) // 2 - 1]
@@ -342,15 +355,17 @@ def plot_04_mzi_fit(die, save_path, target_bias=-1.0):
                 break
 
     T_fit = _mzi_model(wl_sel, A, B, f, p, w)
-    # NOTE: 공프/스탭피팅.py 가 정답.  min_diff 보정은 fit 결과를 강제로
-    # 데이터의 min 에 맞추는 cosmetic 조작이라 제거.
+    # R² 는 raw fit (스탭피팅.py 와 동일) 으로 계산
     r2 = _r2(T_lin, T_fit)
+    # plot 용 fit 정규화 (0~1) — 데이터와 같은 스케일로 비교 가능하게
+    fit_span = float(T_fit.max() - T_fit.min())
+    T_fit_plot = ((T_fit - T_fit.min()) / fit_span) if fit_span > 1e-12 else T_fit
 
     fig, ax = plt.subplots(figsize=(8.5, 5), dpi=120)
     ax.plot(wl_sel, T_lin, 'b-', lw=1.0,
             label=f'Flat MZM raw ({V_sel:+.1f} V)')
-    ax.plot(wl_sel, T_fit, 'k--', lw=2.0,
-            label=f'MZI fit, R²={r2:.4f}')
+    ax.plot(wl_sel, T_fit_plot, 'k--', lw=2.0,
+            label=f'MZI fit (normalized), R²={r2:.4f}')
     ax.set_xlabel('Wavelength [nm]')
     ax.set_ylabel('Normalized transmission')
     ax.set_title(f'MZM fitting after 2-step flatten ({V_sel:+.1f} V)\n'
