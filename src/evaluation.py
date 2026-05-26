@@ -1,35 +1,34 @@
-"""다이별 종합 평가 (evaluation) 모듈.
+"""다이별 종합 평가 (evaluation) 모듈 — 모든 측정 (날짜별 보존).
 
-분산되어 있던 평가 정보 (data.csv 의 is_outlier_*, robust_z_*,
-quality_grade, vpi_status, imbalance_dB, mzm_loss_dB 등) 를 한
-파일에서 통합 평가한다.
+입력은 data_by_date.csv (98 측정).  dedup 안 한 모든 날짜 측정을 한
+파일에 통합 평가한다.
 
 출력:
-    res/csv/evaluation.csv    데이터 형태 (사람이 읽기 위한 기본 컬럼만)
+    res/csv/evaluation.csv    데이터 형태
     res/csv/evaluation.xlsx   빨간/노랑 배경 + 비고란 + figures_per_die hyperlink
 
-평가 항목 (모두 통과 / 경고 / 실패 등급):
+평가 항목:
 
     1. Vpi extraction        : vpi_status 가 ok 가 아니면 FAIL
     2. ER  physical bound    : 10 ≤ ER  ≤ 45 dB    벗어나면 FAIL
     3. IL  physical bound    : -15 ≤ IL ≤ -1 dB    벗어나면 FAIL
     4. Vpi physical bound    :   2 ≤ V_π ≤ 60 V    벗어나면 FAIL
-    5. ER  Robust Z          : |z| > 3  → WARN
-    6. IL  Robust Z          : |z| > 3  → WARN
-    7. Vpi Robust Z          : |z| > 3  → WARN
+    5. ER  Robust Z          : |z| > 3  → WARN  (그룹: Date, Wafer, Band)
+    6. IL  Robust Z          : 〃
+    7. Vpi Robust Z          : 〃
     8. Linearity R^2         : >= 0.95 PASS / >= 0.90 WARN / >= 0.50 CAUTION / < 0.50 FAIL
     9. Splitter imbalance    : < 0.5 dB PASS / < 1.0 dB OK / >= 1.0 WARN
    10. MZM section loss      : < 1.0 dB PASS / < 2.0 dB OK / >= 2.0 WARN
 
 종합 (overall):
-    FAIL  하나라도 있으면 FAIL  (XLSX 행 전체 빨간 배경)
+    FAIL  하나라도 있으면 FAIL  (XLSX 행 빨간 배경)
     WARN  하나라도 있고 FAIL 없으면 WARN (노랑 배경)
     그 외 PASS  (흰 배경)
 
-XLSX 의 마지막 컬럼 `figures` 에 해당 다이의 figures_per_die 폴더로
-가는 hyperlink 가 들어간다.
+XLSX 의 `figures` 컬럼 = 그 측정의 figures_per_die 폴더로 hyperlink
+(정확한 날짜 폴더로).
 """
-import sys, os, glob
+import sys, os
 PROGRAM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROGRAM_ROOT, 'src'))
 
@@ -39,47 +38,49 @@ import numpy as np
 from outlier_detect import PHYSICAL_BOUNDS
 
 
-CSV_PATH    = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data.csv')
+CSV_PATH    = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data_by_date.csv')
 FIG_ROOT    = os.path.join(PROGRAM_ROOT, 'res', 'figures_per_die')
 OUT_CSV     = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'evaluation.csv')
 OUT_XLSX    = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'evaluation.xlsx')
 
 
 # ──────────────────────────────────────────────────────────────────────
-# 평가 기준 — 한 곳에 모아 관리
+# 평가 임계값
 # ──────────────────────────────────────────────────────────────────────
-LINEARITY_THRESHOLDS = {  # R^2 등급 임계값
-    'pass':    0.95,
-    'warn':    0.90,
-    'caution': 0.50,
-}
-IMBALANCE_THRESHOLDS = {  # imbalance_dB
-    'pass': 0.5,
-    'ok':   1.0,
-}
-LOSS_THRESHOLDS = {       # mzm_loss_dB (양수, 클수록 손실 큼)
-    'pass': 1.0,
-    'ok':   2.0,
-}
+LINEARITY_THRESHOLDS = {'pass': 0.95, 'warn': 0.90, 'caution': 0.50}
+IMBALANCE_THRESHOLDS = {'pass': 0.5,  'ok':   1.0}
+LOSS_THRESHOLDS      = {'pass': 1.0,  'ok':   2.0}
 
 
-def _find_figure_dir(wafer, band, row, col):
-    """figures_per_die 안에서 해당 다이 폴더 (어느 날짜든) 찾아 path 반환.
-    없으면 빈 문자열."""
-    pattern = os.path.join(FIG_ROOT, '*', f'{band}-band', wafer,
-                            f'({row},{col})')
-    matches = sorted(glob.glob(pattern))
-    return matches[-1] if matches else ''   # 가장 최신 날짜 채택
+# ──────────────────────────────────────────────────────────────────────
+# Robust Z (그룹: Date, Wafer, Band)
+# ──────────────────────────────────────────────────────────────────────
+def add_robust_z(df):
+    """data_by_date.csv 에 robust_z_* 컬럼이 없으므로 직접 계산."""
+    for col in ['ER_dB', 'IL_dB', 'Vpi_V']:
+        z_col = f'robust_z_{col}'
+        df[z_col] = np.nan
+        for _, grp in df.groupby(['Date', 'Wafer', 'Band']):
+            vals = grp[col].dropna()
+            if len(vals) < 3:
+                continue
+            m = vals.median()
+            mad = (vals - m).abs().median()
+            sigma = 1.4826 * mad
+            if sigma == 0:
+                continue
+            for idx in grp.index:
+                x = grp.loc[idx, col]
+                if pd.isna(x):
+                    continue
+                df.at[idx, z_col] = round((x - m) / sigma, 2)
+    return df
 
 
+# ──────────────────────────────────────────────────────────────────────
+# 평가 (다이 한 행)
+# ──────────────────────────────────────────────────────────────────────
 def _evaluate_row(row):
-    """한 다이 row → 평가 dict.
-
-    반환:
-        overall: 'PASS' / 'WARN' / 'FAIL'
-        notes:   비고 (자연어, 세미콜론 구분)
-        category 별 등급: vpi_status_eval, er_phys, il_phys, ..., loss_eval
-    """
     issues_fail = []
     issues_warn = []
     cat = {}
@@ -92,7 +93,7 @@ def _evaluate_row(row):
     else:
         cat['vpi_extraction'] = 'PASS'
 
-    # 2. ER physical bound
+    # 2. ER physical
     er = row.get('ER_dB')
     er_lo, er_hi = PHYSICAL_BOUNDS['ER_dB']
     if pd.isna(er):
@@ -103,7 +104,7 @@ def _evaluate_row(row):
     else:
         cat['er_phys'] = 'PASS'
 
-    # 3. IL physical bound
+    # 3. IL physical
     il = row.get('IL_dB')
     il_lo, il_hi = PHYSICAL_BOUNDS['IL_dB']
     if pd.isna(il):
@@ -114,11 +115,10 @@ def _evaluate_row(row):
     else:
         cat['il_phys'] = 'PASS'
 
-    # 4. Vpi physical bound
+    # 4. Vpi physical
     vpi = row.get('Vpi_V')
     vp_lo, vp_hi = PHYSICAL_BOUNDS['Vpi_V']
     if pd.isna(vpi):
-        # vpi_status 가 이미 FAIL 이면 중복 보고 안 함
         if cat['vpi_extraction'] == 'PASS':
             cat['vpi_phys'] = 'FAIL'; issues_fail.append('Vpi missing')
         else:
@@ -142,7 +142,7 @@ def _evaluate_row(row):
     r2 = row.get('R2_dlam_vs_V')
     if pd.isna(r2):
         cat['linearity'] = 'FAIL'
-        if cat['vpi_extraction'] == 'PASS':   # 중복 보고 회피
+        if cat['vpi_extraction'] == 'PASS':
             issues_fail.append('Linearity R² missing')
     elif r2 < LINEARITY_THRESHOLDS['caution']:
         cat['linearity'] = 'FAIL'
@@ -194,9 +194,16 @@ def _evaluate_row(row):
     return out
 
 
+def _find_figure_dir(date, wafer, band, row, col):
+    """정확한 날짜 폴더의 figures_per_die 경로."""
+    path = os.path.join(FIG_ROOT, str(date), f'{band}-band', wafer,
+                        f'({int(row)},{int(col)})')
+    return path if os.path.isdir(path) else ''
+
+
 def build_evaluation(df):
-    """data.csv DataFrame → 평가 결과 DataFrame."""
-    base_cols = ['Wafer', 'Band', 'Row', 'Col', 'Width_nm', 'Length_um',
+    df = add_robust_z(df.copy())
+    base_cols = ['Date', 'Wafer', 'Band', 'Row', 'Col', 'Width_nm', 'Length_um',
                  'ER_dB', 'IL_dB', 'Vpi_V', 'Vpi_L_V_cm',
                  'R2_dlam_vs_V', 'quality_grade',
                  'imbalance_dB', 'mzm_loss_dB']
@@ -208,11 +215,10 @@ def build_evaluation(df):
         rec = {c: r.get(c) for c in base_cols}
         rec.update(ev)
         rec['figures'] = _find_figure_dir(
-            r['Wafer'], r['Band'], int(r['Row']), int(r['Col']))
+            r['Date'], r['Wafer'], r['Band'], r['Row'], r['Col'])
         rows.append(rec)
 
     out_df = pd.DataFrame(rows)
-    # 컬럼 순서: 식별자 → 측정값 → 평가 → notes → figures
     col_order = (
         base_cols +
         ['overall', 'vpi_extraction', 'er_phys', 'il_phys', 'vpi_phys',
@@ -224,7 +230,7 @@ def build_evaluation(df):
 
 
 # ──────────────────────────────────────────────────────────────────────
-# XLSX 출력 — 빨간/노랑 배경 + figures hyperlink
+# XLSX (빨간/노랑 배경 + hyperlink)
 # ──────────────────────────────────────────────────────────────────────
 def write_xlsx(df, path):
     from openpyxl import Workbook
@@ -235,8 +241,6 @@ def write_xlsx(df, path):
 
     headers = list(df.columns)
     ws.append(headers)
-
-    # 헤더 스타일
     header_fill = PatternFill(start_color='D9D9D9', end_color='D9D9D9',
                               fill_type='solid')
     for ci in range(1, len(headers) + 1):
@@ -245,27 +249,25 @@ def write_xlsx(df, path):
         c.alignment = Alignment(horizontal='center')
 
     fail_fill = PatternFill(start_color='FFC7C7', end_color='FFC7C7',
-                            fill_type='solid')   # 빨강
+                            fill_type='solid')
     warn_fill = PatternFill(start_color='FFF2CC', end_color='FFF2CC',
-                            fill_type='solid')   # 노랑
+                            fill_type='solid')
     fail_font = Font(color='B00020', bold=True)
     warn_font = Font(color='996600', bold=False)
 
     fig_col_idx = headers.index('figures') + 1 if 'figures' in headers else None
-    overall_col_idx = headers.index('overall') + 1 if 'overall' in headers else None
 
     for _, row in df.iterrows():
         ws.append([row[c] for c in headers])
         excel_row = ws.max_row
         overall = row.get('overall')
 
-        # 행 전체 배경
         if overall == 'FAIL':
-            row_fill = fail_fill; row_font = fail_font
+            row_fill, row_font = fail_fill, fail_font
         elif overall == 'WARN':
-            row_fill = warn_fill; row_font = warn_font
+            row_fill, row_font = warn_fill, warn_font
         else:
-            row_fill = None; row_font = None
+            row_fill, row_font = None, None
 
         if row_fill is not None:
             for ci in range(1, len(headers) + 1):
@@ -274,18 +276,15 @@ def write_xlsx(df, path):
                 if row_font is not None:
                     cell.font = row_font
 
-        # figures hyperlink (어느 행이든)
         if fig_col_idx is not None and row.get('figures'):
             cell = ws.cell(row=excel_row, column=fig_col_idx)
             cell.value = 'open'
-            # 절대 경로 hyperlink (file:// scheme).  로컬에서 직접 클릭 가능.
             cell.hyperlink = 'file://' + str(row['figures'])
             cell.font = Font(color='0000EE', underline='single',
                              bold=(overall == 'FAIL'))
 
-    # 컬럼 너비 적당히
     widths = {
-        'Wafer': 8, 'Band': 6, 'Row': 6, 'Col': 6,
+        'Date': 12, 'Wafer': 8, 'Band': 6, 'Row': 6, 'Col': 6,
         'Width_nm': 9, 'Length_um': 10,
         'ER_dB': 9, 'IL_dB': 9, 'Vpi_V': 9, 'Vpi_L_V_cm': 11,
         'R2_dlam_vs_V': 12, 'quality_grade': 8,
@@ -298,17 +297,14 @@ def write_xlsx(df, path):
     }
     for ci, name in enumerate(headers, 1):
         ws.column_dimensions[get_column_letter(ci)].width = widths.get(name, 12)
-
-    # 첫 행 frozen
     ws.freeze_panes = 'A2'
-
     wb.save(path)
 
 
 def main():
     df = pd.read_csv(CSV_PATH)
     print('=' * 70)
-    print(f' 평가 (evaluation) — 다이 {len(df)} 개')
+    print(f' 평가 (evaluation) — 측정 {len(df)} 개 (모든 날짜)')
     print('=' * 70)
 
     eval_df = build_evaluation(df)
@@ -318,19 +314,22 @@ def main():
     counts = eval_df['overall'].value_counts()
     print('\n[종합 분포]')
     for k in ('PASS', 'WARN', 'FAIL'):
-        print(f'  {k:5s}: {counts.get(k, 0):3d} 다이')
+        print(f'  {k:5s}: {counts.get(k, 0):3d} 측정')
+
+    print('\n[날짜별 종합]')
+    for date, grp in eval_df.groupby('Date'):
+        n = len(grp)
+        f = (grp['overall'] == 'FAIL').sum()
+        w = (grp['overall'] == 'WARN').sum()
+        p = (grp['overall'] == 'PASS').sum()
+        print(f'  {date}:  PASS {p}/{n}, WARN {w}/{n}, FAIL {f}/{n}')
 
     fails = eval_df[eval_df['overall'] == 'FAIL']
     if not fails.empty:
-        print('\n[FAIL 다이 상세 (앞 10개)]')
-        for _, r in fails.head(10).iterrows():
-            print(f'  {r["Wafer"]} {r["Band"]} ({int(r["Row"])},{int(r["Col"])}): {r["notes"]}')
-
-    warns = eval_df[eval_df['overall'] == 'WARN']
-    if not warns.empty:
-        print('\n[WARN 다이 상세 (앞 10개)]')
-        for _, r in warns.head(10).iterrows():
-            print(f'  {r["Wafer"]} {r["Band"]} ({int(r["Row"])},{int(r["Col"])}): {r["notes"]}')
+        print(f'\n[FAIL {len(fails)}개 — 앞 5개]')
+        for _, r in fails.head(5).iterrows():
+            print(f'  {r["Date"]} {r["Wafer"]} {r["Band"]} '
+                  f'({int(r["Row"])},{int(r["Col"])}): {r["notes"]}')
 
     print(f'\nCSV  저장: {OUT_CSV}')
     print(f'XLSX 저장: {OUT_XLSX}')

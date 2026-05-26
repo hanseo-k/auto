@@ -40,7 +40,6 @@ import zscore_map
 import decompose_variation
 import analyze_by_date
 import evaluation
-import evaluation_by_date
 
 
 DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
@@ -152,13 +151,9 @@ def main():
     print('       날짜별 분석 (data_by_date.csv + by_date_summary.png)...')
     analyze_by_date.export_and_plot()
 
-    # 6c) 다이별 평가 (dedup 후 — evaluation.csv + .xlsx)
-    print('       다이별 평가 (evaluation.csv + .xlsx)...')
+    # 6c) 종합 평가 (98 측정 모든 날짜 — evaluation.csv + .xlsx)
+    print('       종합 평가 (evaluation.csv + .xlsx)...')
     evaluation.main()
-
-    # 6d) 날짜별 평가 (모든 측정 — evaluation_by_date.csv + .xlsx)
-    print('       날짜별 평가 (evaluation_by_date.csv + .xlsx)...')
-    evaluation_by_date.main()
 
     # 6c) GitHub push
     subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
