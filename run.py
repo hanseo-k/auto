@@ -42,6 +42,7 @@ import plot_1d_mad
 import zscore_map
 import decompose_variation
 import analyze_by_date
+import evaluation
 
 
 DATA_ROOT = os.path.join(PROGRAM_ROOT, 'data', 'HY202103')
@@ -197,6 +198,10 @@ def main():
     # 6b) 날짜별 분석 — sync 뒤에 실행해야 결과 보존됨
     print('       날짜별 분석 (data_by_date.csv + by_date_summary.png)...')
     analyze_by_date.export_and_plot()
+
+    # 6c) 다이별 평가 (evaluation.csv + evaluation.xlsx)
+    print('       다이별 평가 (evaluation.csv + evaluation.xlsx)...')
+    evaluation.main()
 
     # 6c) GitHub push
     subprocess.run(['git', '-C', PROGRAM_ROOT, 'add', '-A'], check=True)
