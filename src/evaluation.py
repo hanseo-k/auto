@@ -337,12 +337,29 @@ def write_xlsx(df, path):
 def main():
     df = pd.read_csv(CSV_PATH)
     print('=' * 70)
-    print(f' 평가 (evaluation) — 측정 {len(df)} 개 (모든 날짜)')
+    print(f' 통합 평가 (data + by_date + evaluation 합본) — 측정 {len(df)} 개')
     print('=' * 70)
 
     eval_df = build_evaluation(df)
-    eval_df.to_csv(OUT_CSV, index=False, encoding='utf-8-sig')
-    write_xlsx(eval_df, OUT_XLSX)
+    out_dir = os.path.dirname(OUT_CSV)
+
+    # 5 통합 파일 (CSV + XLSX 짝)
+    wafers = sorted(eval_df['Wafer'].unique())
+    targets = ['all'] + list(wafers)
+    for w in targets:
+        sub = eval_df if w == 'all' else eval_df[eval_df['Wafer'] == w]
+        sub.to_csv(os.path.join(out_dir, f'data_{w}.csv'),
+                   index=False, encoding='utf-8-sig')
+        write_xlsx(sub, os.path.join(out_dir, f'data_{w}.xlsx'))
+
+    # cleanup: 5 통합 파일 외 모든 csv/xlsx 삭제
+    keep = set()
+    for w in targets:
+        keep.add(f'data_{w}.csv')
+        keep.add(f'data_{w}.xlsx')
+    for f in os.listdir(out_dir):
+        if (f.endswith('.csv') or f.endswith('.xlsx')) and f not in keep:
+            os.remove(os.path.join(out_dir, f))
 
     counts = eval_df['overall'].value_counts()
     print('\n[종합 분포]')
@@ -364,8 +381,8 @@ def main():
             print(f'  {r["Date"]} {r["Wafer"]} {r["Band"]} '
                   f'({int(r["Row"])},{int(r["Col"])}): {r["notes"]}')
 
-    print(f'\nCSV  저장: {OUT_CSV}')
-    print(f'XLSX 저장: {OUT_XLSX}')
+    print(f'\n저장 위치: {out_dir}')
+    print('  파일:', sorted(f for f in os.listdir(out_dir) if f.startswith('data_')))
 
 
 if __name__ == '__main__':
