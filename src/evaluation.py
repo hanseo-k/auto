@@ -29,6 +29,7 @@ XLSX 의 `figures` 컬럼 = 그 측정의 figures_per_die 폴더로 hyperlink
 (정확한 날짜 폴더로).
 """
 import sys, os
+from urllib.parse import quote as _urlquote
 PROGRAM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROGRAM_ROOT, 'src'))
 
@@ -42,6 +43,10 @@ CSV_PATH    = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'data_by_date.csv')
 FIG_ROOT    = os.path.join(PROGRAM_ROOT, 'res', 'figures_per_die')
 OUT_CSV     = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'evaluation.csv')
 OUT_XLSX    = os.path.join(PROGRAM_ROOT, 'res', 'csv', 'evaluation.xlsx')
+
+# GitHub repository — figures 컬럼 hyperlink 의 기본 URL.
+# 폴더 구조: res/figures_per_die/<date>/<band>-band/<wafer>/(r,c)/
+GITHUB_FIG_BASE = 'https://github.com/hanseo-k/auto/tree/main/res/figures_per_die'
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -279,7 +284,11 @@ def write_xlsx(df, path):
         if fig_col_idx is not None and row.get('figures'):
             cell = ws.cell(row=excel_row, column=fig_col_idx)
             cell.value = 'open'
-            cell.hyperlink = 'file://' + str(row['figures'])
+            # GitHub web URL — 다른 사람과 공유해도 클릭 즉시 web view 로 이동.
+            # 폴더명에 괄호/콤마 들어가니 path segment 별로 안전 인코딩.
+            rel = os.path.relpath(row['figures'], FIG_ROOT)
+            url_path = '/'.join(_urlquote(seg, safe='') for seg in rel.split(os.sep))
+            cell.hyperlink = f'{GITHUB_FIG_BASE}/{url_path}'
             cell.font = Font(color='0000EE', underline='single',
                              bold=(overall == 'FAIL'))
 
