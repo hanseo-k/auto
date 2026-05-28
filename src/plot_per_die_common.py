@@ -505,20 +505,37 @@ def plot_08_null_zoom(die, save_path, config, half_window=2.0):
     zoom_hi = center_wl + half_window
 
     cmap = get_cmap('coolwarm')
-    fig, ax = plt.subplots(figsize=(9, 5.5), dpi=120)
+    fig, ax = plt.subplots(figsize=(9, 6), dpi=120)
+
+    null_labels = []  # (V, wl) — 텍스트 표 만들기용
     for i, V in enumerate(biases):
         wl, IL = sweeps[V]
         mask = (wl >= zoom_lo) & (wl <= zoom_hi)
         color = cmap(i / max(len(biases) - 1, 1))
         ax.plot(wl[mask], IL[mask], lw=1.4, color=color,
                 label=f'{V:+.1f} V')
-        # null 위치 marker
+        # 각 bias 의 null 위치
         res_V = find_deepest_null_in_window(wl, IL, zoom_lo, zoom_hi)
         if res_V is not None:
             null_wl, null_IL = res_V
-            ax.axvline(null_wl, color=color, ls=':', lw=0.8, alpha=0.6)
-    ax.axvline(center_wl, color='black', ls='-', lw=0.5, alpha=0.4,
-               label=f'V=0 null = {center_wl:.3f} nm')
+            ax.axvline(null_wl, color=color, ls=':', lw=0.8, alpha=0.7)
+            # null 위치에 작은 marker (아래쪽)
+            ax.plot(null_wl, null_IL, 'v', color=color, ms=8,
+                    mec='black', mew=0.5, zorder=5)
+            null_labels.append((V, null_wl))
+
+    # V=0 reference 세로선
+    ax.axvline(center_wl, color='black', ls='-', lw=0.5, alpha=0.4)
+
+    # 좌상단 박스에 각 bias 의 null wavelength 표
+    if null_labels:
+        lines = ['Null wavelength per bias:']
+        for V, w in sorted(null_labels):
+            lines.append(f'  {V:+.1f} V :  {w:.3f} nm')
+        ax.text(0.02, 0.97, '\n'.join(lines), transform=ax.transAxes,
+                va='top', fontsize=8, family='monospace',
+                bbox=dict(facecolor='white', alpha=0.9, edgecolor='gray'))
+
     ax.set_xlabel('Wavelength [nm]')
     ax.set_ylabel('Measured transmission [dB]')
     ax.set_title(f'Focus on spectral null near {center_wl:.2f} nm '
@@ -607,7 +624,9 @@ def plot_10_vpiL_per_bias(die, save_path, config):
         V_π(V_i) = V_i · π / Δφ(V_i)
     V_π·L = V_π · L  (length 는 die['length_um'] → cm 환산)
 
-    너무 작은 |Δφ| 는 noise 로 큰 V_π 됨 → display 시 |Δφ| > 0.1 rad 만 plot.
+    Δφ → 0 (= V == V0) 인 점만 제외.  나머지 모든 bias 표시.
+    작은 |Δφ| 는 자연스럽게 큰 V_π 값을 주지만 그것도 디바이스의 비선형
+    특성이므로 정보로 보존.
     """
     sweeps = die['sweeps']; biases = sorted(sweeps.keys())
     win_lo, win_hi = config['er_window']
@@ -636,7 +655,7 @@ def plot_10_vpiL_per_bias(die, save_path, config):
             continue
         dlam_nm = res[0] - null0_wl
         dphi = 2 * np.pi * dlam_nm / fsr
-        if abs(dphi) < 0.1:   # noise 영역 (너무 작은 phase shift)
+        if abs(dphi) < 1e-6:   # 사실상 V == V0 만 제외 (분모 0 방지)
             continue
         vpi_at_V = (V - V0) * np.pi / dphi
         vpiL = vpi_at_V * L_cm
