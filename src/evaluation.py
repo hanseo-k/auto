@@ -200,10 +200,10 @@ def _evaluate_row(row):
 
 
 def _find_figure_dir(date, wafer, band, row, col):
-    """정확한 날짜 폴더의 figures_per_die 경로."""
+    """그 측정의 합친 figure PNG 경로 (좌표 이름)."""
     path = os.path.join(FIG_ROOT, str(date), f'{band}-band', wafer,
-                        f'({int(row)},{int(col)})')
-    return path if os.path.isdir(path) else ''
+                        f'({int(row)},{int(col)}).png')
+    return path if os.path.isfile(path) else ''
 
 
 def build_evaluation(df):

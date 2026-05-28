@@ -129,6 +129,10 @@ def main():
     run_dir = make_run_dir()
     print(f'        → {run_dir}')
     export_csv(df, run_dir)
+    # data_all_wafers.csv (= data.csv 의 alias) + wafer 별 분리
+    export_csv(df, run_dir, filename='data_all_wafers.csv')
+    for w in sorted(df['Wafer'].unique()):
+        export_csv(df[df['Wafer'] == w], run_dir, filename=f'data_{w}.csv')
 
     # 5) 플롯 12개 동시 생성
     print('[5/6] 플롯 생성 (4종 × 3 metric = 12작업, 멀티코어 병렬)...')

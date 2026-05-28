@@ -16,7 +16,7 @@ config 구조:
       'mzi_target_bias':      float (04 fit 대상 bias),
     }
 """
-import sys, os, re, glob
+import sys, os, re, glob, shutil, tempfile
 PROGRAM_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(PROGRAM_ROOT, 'src'))
 
@@ -25,6 +25,7 @@ import matplotlib; matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from matplotlib.cm import get_cmap
 from scipy.signal import find_peaks as _scipy_find_peaks
+from PIL import Image
 
 from xml_loader import load_die, BAND_OF_FILE
 
@@ -689,25 +690,91 @@ def plot_10_vpiL_per_bias(die, save_path, config):
 # ──────────────────────────────────────────────────────────────────────
 # Per-die worker (config-driven)
 # ──────────────────────────────────────────────────────────────────────
+def _combine_3x3(png_paths, out_path, ncol=3, label=None):
+    """9 (or fewer) PNG 들을 3x3 grid 로 합쳐 하나의 PNG 로 저장.
+
+    각 그림 크기가 다르면 가장 큰 사이즈로 통일 (흰 여백) 후 paste.
+    label 이 주어지면 상단에 텍스트 띠 추가.
+    """
+    imgs = [Image.open(p).convert('RGB') for p in png_paths if os.path.exists(p)]
+    if not imgs:
+        return False
+    max_w = max(im.width for im in imgs)
+    max_h = max(im.height for im in imgs)
+    nrow = (len(imgs) + ncol - 1) // ncol
+
+    # 상단 label 영역 (옵션)
+    label_h = 0
+    if label:
+        from PIL import ImageDraw, ImageFont
+        label_h = 60
+    canvas = Image.new('RGB', (max_w * ncol, max_h * nrow + label_h), 'white')
+
+    if label:
+        from PIL import ImageDraw, ImageFont
+        draw = ImageDraw.Draw(canvas)
+        try:
+            font = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf', 32)
+        except Exception:
+            font = ImageFont.load_default()
+        draw.text((20, 12), label, fill='black', font=font)
+
+    for i, im in enumerate(imgs):
+        r, c = i // ncol, i % ncol
+        x = c * max_w + (max_w - im.width) // 2
+        y = r * max_h + (max_h - im.height) // 2 + label_h
+        canvas.paste(im, (x, y))
+    canvas.save(out_path, optimize=True)
+    return True
+
+
 def process_one(args, config):
+    """다이 한 개 처리:
+        1) 9 개 plot 함수를 임시 폴더에 저장 (05_iv_semilog 제외)
+        2) PIL 로 3x3 grid 한 장 PNG 로 합침
+        3) 합친 PNG 를 wafer 폴더에 '(row,col).png' 로 저장
+        4) 임시 폴더 정리
+    """
     fp, date, wafer, row, col, band = args
     die = load_die(fp)
     if die is None:
         return f'{fp}: parse fail'
-    out_dir = os.path.join(OUT_ROOT, date, f'{band}-band', wafer,
-                            f'({row},{col})')
-    os.makedirs(out_dir, exist_ok=True)
+
+    wafer_dir = os.path.join(OUT_ROOT, date, f'{band}-band', wafer)
+    os.makedirs(wafer_dir, exist_ok=True)
+
+    plots = [
+        ('01_mzm_ref_spectra.png',   plot_01_mzm_ref_spectra),
+        ('02_ref_polyfit.png',       plot_02_ref_polyfit),
+        ('03_flat_transmission.png', plot_03_flat_transmission),
+        ('04_mzi_fit.png',           plot_04_mzi_fit),
+        # 05 (iv_semilog) 제외 — 06 (iv_fit) 이 같은 데이터에 fit 까지 포함
+        ('06_iv_fit.png',            plot_06_iv_fit),
+        ('07_fsr_per_bias.png',      plot_07_fsr_per_bias),
+        ('08_null_zoom.png',         plot_08_null_zoom),
+        ('09_phase_shift.png',       plot_09_phase_shift),
+        ('10_vpiL_per_bias.png',     plot_10_vpiL_per_bias),
+    ]
+
+    tmp_dir = tempfile.mkdtemp(prefix='per_die_', dir=wafer_dir)
     try:
-        plot_01_mzm_ref_spectra  (die, os.path.join(out_dir, '01_mzm_ref_spectra.png'), config)
-        plot_02_ref_polyfit      (die, os.path.join(out_dir, '02_ref_polyfit.png'), config)
-        plot_03_flat_transmission(die, os.path.join(out_dir, '03_flat_transmission.png'), config)
-        plot_04_mzi_fit          (die, os.path.join(out_dir, '04_mzi_fit.png'), config)
-        plot_05_iv_semilog       (die, os.path.join(out_dir, '05_iv_semilog.png'), config)
-        plot_06_iv_fit           (die, os.path.join(out_dir, '06_iv_fit.png'), config)
-        plot_07_fsr_per_bias     (die, os.path.join(out_dir, '07_fsr_per_bias.png'), config)
-        plot_08_null_zoom        (die, os.path.join(out_dir, '08_null_zoom.png'), config)
-        plot_09_phase_shift      (die, os.path.join(out_dir, '09_phase_shift.png'), config)
-        plot_10_vpiL_per_bias    (die, os.path.join(out_dir, '10_vpiL_per_bias.png'), config)
-        return f'OK  {date}/{band}-band/{wafer}/({row},{col})'
-    except Exception as e:
-        return f'FAIL {date}/{band}-band/{wafer}/({row},{col}): {e}'
+        paths = []
+        for name, fn in plots:
+            p = os.path.join(tmp_dir, name)
+            try:
+                fn(die, p, config)
+                if os.path.exists(p):
+                    paths.append(p)
+            except Exception as e:
+                # 개별 plot 실패는 무시하고 계속 (남은 plot 으로 합침)
+                pass
+
+        out_png = os.path.join(wafer_dir, f'({row},{col}).png')
+        label = f'{date}  {wafer} [{band}-band]  ({row}, {col})'
+        ok = _combine_3x3(paths, out_png, ncol=3, label=label)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    if not ok:
+        return f'FAIL {date}/{band}-band/{wafer}/({row},{col})'
+    return f'OK  {date}/{band}-band/{wafer}/({row},{col})'

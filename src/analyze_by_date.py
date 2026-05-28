@@ -269,6 +269,14 @@ def export_and_plot(df=None, csv_path=None, xlsx_path=None, fig_path=None):
     os.makedirs(os.path.dirname(fig_path), exist_ok=True)
     df.to_csv(csv_path, index=False, encoding='utf-8-sig')
     print(f'CSV 저장: {csv_path}')
+    # all-wafers (alias) + wafer 별 분리
+    out_dir = os.path.dirname(csv_path)
+    df.to_csv(os.path.join(out_dir, 'data_by_date_all_wafers.csv'),
+              index=False, encoding='utf-8-sig')
+    for w in sorted(df['Wafer'].unique()):
+        sub = df[df['Wafer'] == w]
+        sub.to_csv(os.path.join(out_dir, f'data_by_date_{w}.csv'),
+                   index=False, encoding='utf-8-sig')
     export_xlsx(df, xlsx_path)
     plot_by_date(df, fig_path)
     return df
