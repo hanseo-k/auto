@@ -730,25 +730,25 @@ def _combine_3x3(png_paths, out_path, ncol=3, label=None):
 
 def process_one(args, config):
     """다이 한 개 처리:
-        1) 9 개 plot 함수를 임시 폴더에 저장 (05_iv_semilog 제외)
-        2) PIL 로 3x3 grid 한 장 PNG 로 합침
-        3) 합친 PNG 를 wafer 폴더에 '(row,col).png' 로 저장
-        4) 임시 폴더 정리
+        1) 10 개 plot 함수를 좌표 폴더에 그대로 저장 (01~10)
+        2) 05 (iv_semilog) 제외 9 개를 PIL 3x3 grid 로 합침
+        3) 합친 사진을 같은 폴더의 '00_combined.png' 로 저장 (맨 위 정렬)
     """
     fp, date, wafer, row, col, band = args
     die = load_die(fp)
     if die is None:
         return f'{fp}: parse fail'
 
-    wafer_dir = os.path.join(OUT_ROOT, date, f'{band}-band', wafer)
-    os.makedirs(wafer_dir, exist_ok=True)
+    out_dir = os.path.join(OUT_ROOT, date, f'{band}-band', wafer,
+                            f'({row},{col})')
+    os.makedirs(out_dir, exist_ok=True)
 
     plots = [
         ('01_mzm_ref_spectra.png',   plot_01_mzm_ref_spectra),
         ('02_ref_polyfit.png',       plot_02_ref_polyfit),
         ('03_flat_transmission.png', plot_03_flat_transmission),
         ('04_mzi_fit.png',           plot_04_mzi_fit),
-        # 05 (iv_semilog) 제외 — 06 (iv_fit) 이 같은 데이터에 fit 까지 포함
+        ('05_iv_semilog.png',        plot_05_iv_semilog),
         ('06_iv_fit.png',            plot_06_iv_fit),
         ('07_fsr_per_bias.png',      plot_07_fsr_per_bias),
         ('08_null_zoom.png',         plot_08_null_zoom),
@@ -756,25 +756,21 @@ def process_one(args, config):
         ('10_vpiL_per_bias.png',     plot_10_vpiL_per_bias),
     ]
 
-    tmp_dir = tempfile.mkdtemp(prefix='per_die_', dir=wafer_dir)
-    try:
-        paths = []
-        for name, fn in plots:
-            p = os.path.join(tmp_dir, name)
-            try:
-                fn(die, p, config)
-                if os.path.exists(p):
-                    paths.append(p)
-            except Exception as e:
-                # 개별 plot 실패는 무시하고 계속 (남은 plot 으로 합침)
-                pass
+    # 개별 PNG 들 좌표 폴더에 저장
+    saved_paths = {}
+    for name, fn in plots:
+        p = os.path.join(out_dir, name)
+        try:
+            fn(die, p, config)
+            if os.path.exists(p):
+                saved_paths[name] = p
+        except Exception:
+            pass
 
-        out_png = os.path.join(wafer_dir, f'({row},{col}).png')
-        label = f'{date}  {wafer} [{band}-band]  ({row}, {col})'
-        ok = _combine_3x3(paths, out_png, ncol=3, label=label)
-    finally:
-        shutil.rmtree(tmp_dir, ignore_errors=True)
+    # 합친 사진: 05 제외한 9 개를 같은 폴더의 00_combined.png 로
+    combine_paths = [v for k, v in saved_paths.items() if k != '05_iv_semilog.png']
+    combined_out = os.path.join(out_dir, '00_combined.png')
+    label = f'{date}  {wafer} [{band}-band]  ({row}, {col})'
+    _combine_3x3(combine_paths, combined_out, ncol=3, label=label)
 
-    if not ok:
-        return f'FAIL {date}/{band}-band/{wafer}/({row},{col})'
     return f'OK  {date}/{band}-band/{wafer}/({row},{col})'

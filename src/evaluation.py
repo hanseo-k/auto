@@ -200,10 +200,19 @@ def _evaluate_row(row):
 
 
 def _find_figure_dir(date, wafer, band, row, col):
-    """그 측정의 합친 figure PNG 경로 (좌표 이름)."""
+    """그 측정의 figures 폴더 경로 (좌표별 폴더)."""
     path = os.path.join(FIG_ROOT, str(date), f'{band}-band', wafer,
-                        f'({int(row)},{int(col)}).png')
-    return path if os.path.isfile(path) else ''
+                        f'({int(row)},{int(col)})')
+    return path if os.path.isdir(path) else ''
+
+
+def _find_combined_png(date, wafer, band, row, col):
+    """좌표 폴더 안의 00_combined.png 경로."""
+    folder = _find_figure_dir(date, wafer, band, row, col)
+    if not folder:
+        return ''
+    p = os.path.join(folder, '00_combined.png')
+    return p if os.path.isfile(p) else ''
 
 
 def build_evaluation(df):
@@ -221,6 +230,8 @@ def build_evaluation(df):
         rec.update(ev)
         rec['figures'] = _find_figure_dir(
             r['Date'], r['Wafer'], r['Band'], r['Row'], r['Col'])
+        rec['combined'] = _find_combined_png(
+            r['Date'], r['Wafer'], r['Band'], r['Row'], r['Col'])
         rows.append(rec)
 
     out_df = pd.DataFrame(rows)
@@ -228,7 +239,7 @@ def build_evaluation(df):
         base_cols +
         ['overall', 'vpi_extraction', 'er_phys', 'il_phys', 'vpi_phys',
          'er_z', 'il_z', 'vpi_z', 'linearity', 'imbalance', 'loss',
-         'notes', 'figures']
+         'notes', 'figures', 'combined']
     )
     col_order = [c for c in col_order if c in out_df.columns]
     return out_df[col_order]
@@ -260,7 +271,8 @@ def write_xlsx(df, path):
     fail_font = Font(color='B00020', bold=True)
     warn_font = Font(color='996600', bold=False)
 
-    fig_col_idx = headers.index('figures') + 1 if 'figures' in headers else None
+    fig_col_idx      = headers.index('figures') + 1 if 'figures' in headers else None
+    combined_col_idx = headers.index('combined') + 1 if 'combined' in headers else None
 
     for _, row in df.iterrows():
         ws.append([row[c] for c in headers])
@@ -281,14 +293,26 @@ def write_xlsx(df, path):
                 if row_font is not None:
                     cell.font = row_font
 
+        # figures (폴더) hyperlink
         if fig_col_idx is not None and row.get('figures'):
             cell = ws.cell(row=excel_row, column=fig_col_idx)
             cell.value = 'open'
-            # GitHub web URL — 다른 사람과 공유해도 클릭 즉시 web view 로 이동.
-            # 폴더명에 괄호/콤마 들어가니 path segment 별로 안전 인코딩.
             rel = os.path.relpath(row['figures'], FIG_ROOT)
             url_path = '/'.join(_urlquote(seg, safe='') for seg in rel.split(os.sep))
             cell.hyperlink = f'{GITHUB_FIG_BASE}/{url_path}'
+            cell.font = Font(color='0000EE', underline='single',
+                             bold=(overall == 'FAIL'))
+
+        # combined (합친 PNG) hyperlink — 폴더 안의 00_combined.png 로 직접 이동.
+        # GitHub 의 raw URL 을 쓰면 이미지가 바로 표시됨.
+        if combined_col_idx is not None and row.get('combined'):
+            cell = ws.cell(row=excel_row, column=combined_col_idx)
+            cell.value = 'view'
+            rel = os.path.relpath(row['combined'], FIG_ROOT)
+            url_path = '/'.join(_urlquote(seg, safe='') for seg in rel.split(os.sep))
+            # blob URL: GitHub web 에서 이미지 preview 와 함께 표시
+            blob_base = GITHUB_FIG_BASE.replace('/tree/', '/blob/')
+            cell.hyperlink = f'{blob_base}/{url_path}'
             cell.font = Font(color='0000EE', underline='single',
                              bold=(overall == 'FAIL'))
 
@@ -302,7 +326,7 @@ def write_xlsx(df, path):
         'er_phys': 8, 'il_phys': 8, 'vpi_phys': 9,
         'er_z': 6, 'il_z': 6, 'vpi_z': 7,
         'linearity': 10, 'imbalance': 11, 'loss': 7,
-        'notes': 70, 'figures': 9,
+        'notes': 70, 'figures': 9, 'combined': 9,
     }
     for ci, name in enumerate(headers, 1):
         ws.column_dimensions[get_column_letter(ci)].width = widths.get(name, 12)
